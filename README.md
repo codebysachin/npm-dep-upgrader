@@ -101,8 +101,50 @@ Common options (see `--help` for all of them):
    stops part-way (an error or Ctrl+C), the per-package commits are left as they are. If a
    commit hook rejects the squash commit, the original commits are restored.
 
-Full command output for every step goes to `$TMPDIR/npm-dep-upgrader/<timestamp>/`. The
-project's working tree is never used for logs.
+## When tests fail
+
+The script reads the test output and explains the failure instead of dumping raw output.
+It understands jest, vitest, mocha and `node:test` (spec and TAP reporters). For other
+runners it still picks out error messages and the places in your code where they were thrown.
+
+```
+▶ [1/2] chalk  4.1.2 → 6.0.1  (major)
+  ✖ tests failed (0.3s)
+    │ Result
+    │   ℹ fail 1
+    │ Failing tests
+    │   test/color.test.js
+    │     • highlights errors in red
+    │ Errors
+    │   AssertionError [ERR_ASSERTION]: chalk.red should be a function
+    │ Thrown at
+    │   test/color.test.js:5:10
+    │ Full log: …/004-upgrade-chalk.log
+  ⚠ rolled back chalk to 4.1.2
+```
+
+The same details appear in the MR summary. The reason column names the failing test
+files, and a collapsible block under the table lists the tests, errors and locations. For
+`npm install` failures, it shows npm's error code with a hint (for example
+`ERESOLVE (peer dependency conflict)`) and npm's error lines.
+
+## Logs
+
+Each run writes its logs to `$TMPDIR/npm-dep-upgrader/<timestamp>/`, never to the project's
+working tree. The folder is printed at the start and the end of the run.
+
+| File | Contents |
+| --- | --- |
+| `run.log` | Start here. One line per step: time, PASS/FAIL, what was done, and the step's log file |
+| `NNN-<step>.log` | One file per step: a header naming the step, then every command it ran (exit status, duration, stdout and stderr), a `FAILURE ANALYSIS` section if it failed, and a `ROLLBACK` section if the change was undone |
+| `mr-summary.md` | The Markdown summary for the MR |
+
+```
+11:08:42  ✔  PASS  baseline install                          001-baseline-install.log
+11:08:43  ✔  PASS  baseline tests                            003-baseline-tests.log
+11:08:44  ✖  FAIL  upgrade chalk 4.1.2 → 6.0.1 (tests failed) 004-upgrade-chalk.log
+11:08:45  ✔  PASS  upgrade ms 2.0.0 → 2.1.3                  005-upgrade-ms.log
+```
 
 Press Ctrl+C at any time. The change in progress is rolled back, then run
 `npm install` to re-sync `node_modules`.
@@ -137,3 +179,6 @@ npm test   # node:test unit tests for the pure modules
 | `lib/report.mjs` | Builds the Markdown MR summary (pure) |
 | `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
 | `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`) |
+| `lib/test-output.mjs` | Finds failing files, tests, errors and locations in test output (pure) |
+| `lib/failure-report.mjs` | Formats failures for the terminal, log files and MR summary (pure) |
+| `lib/logfile.mjs` | Layout of `run.log` and the per-step log files |

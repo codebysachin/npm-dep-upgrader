@@ -1,0 +1,57 @@
+TAP version 13
+# Subtest: adds numbers
+not ok 1 - adds numbers
+  ---
+  duration_ms: 0.974917
+  type: 'test'
+  location: '/project/test/math.test.mjs:3:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    2 !== 3
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 3
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///project/test/math.test.mjs:3:37)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.start (node:internal/test_runner/test:1096:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)
+  ...
+# Subtest: passes
+ok 2 - passes
+  ---
+  duration_ms: 0.1155
+  type: 'test'
+  ...
+# Subtest: throws
+not ok 3 - throws
+  ---
+  duration_ms: 0.436291
+  type: 'test'
+  location: '/project/test/str.test.mjs:2:1'
+  failureType: 'testCodeFailure'
+  error: 'boom is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///project/test/str.test.mjs:2:30)
+    Test.runInAsyncScope (node:async_hooks:227:14)
+    Test.run (node:internal/test_runner/test:1201:25)
+    Test.start (node:internal/test_runner/test:1096:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 1
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 75.555375
