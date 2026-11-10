@@ -1,0 +1,16 @@
+{
+  "name": "npm-dep-upgrader",
+  "version": "1.0.0",
+  "description": "Upgrade outdated npm dependencies one at a time, verified by tests, with obsolete override cleanup.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "upgrade-deps": "./upgrade-deps.mjs"
+  },
+  "engines": {
+    "node": ">=18.11"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
