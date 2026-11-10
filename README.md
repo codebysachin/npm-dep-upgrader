@@ -71,7 +71,10 @@ Common options (see `--help` for all of them):
    files are modified, and local `main` matches `origin/main`. If any of these fails, it
    shows a red banner that lists every problem with the commands that fix it, and exits
    with code 1.
-2. **Baseline.** Runs `npm ci`, asks which packages to upgrade, then runs the tests. If tests
+2. **Baseline.** Installs dependencies, asks which packages to upgrade, then runs the tests.
+   With a lockfile it runs `npm ci`, so the baseline is exactly what is committed. Without
+   one it runs `npm install`, which creates `package-lock.json`; that file becomes part of
+   the MR unless it is gitignored. If tests
    already fail on `main`, it stops, because upgrades can't be verified against a failing suite.
 3. **Creates** the working branch.
 4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
