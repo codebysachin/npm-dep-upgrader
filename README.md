@@ -26,10 +26,36 @@ Preview without changing anything:
 node upgrade-deps.mjs --dry-run
 ```
 
+### Choosing what to upgrade
+
+In a terminal, the script lists the outdated packages and asks which ones to upgrade.
+Packages you don't pick are not touched, which is useful when some upgrades are being
+handled on other branches.
+
+```
+5 outdated package(s):
+  1) chalk      4.1.2 → 6.0.1    (major, dependencies)
+  2) lodash     4.17.20 → 4.18.1 (minor, dependencies)
+  ...
+  Which packages should be upgraded? 4,2
+```
+
+- Type numbers, ranges or names, e.g. `3,1,5-7` or `lodash ms`. They are upgraded in the
+  order you type them. `all` picks everything, `none` picks nothing.
+- When those are done, it checks again and offers any packages that are still outdated.
+  Pick more, or press **Enter** to finish.
+- It then asks which overrides to check in the same way.
+- Packages and overrides you skipped are listed in the MR summary.
+
+Use `--yes` (or `-y`) to skip the questions and upgrade everything. That is also what
+happens when there is no terminal, e.g. in CI. Passing `--only a,b` also skips the
+questions.
+
 Common options (see `--help` for all of them):
 
 | Option | Purpose |
 | --- | --- |
+| `-y`, `--yes` | Don't ask; upgrade every outdated package and check every override |
 | `--target latest\|minor\|patch` | `minor` stays within the current major, `patch` within the current minor |
 | `--exclude a,b` / `--only a,b` | Leave out packages, or upgrade only the ones listed |
 | `--test-cmd "npm run test:ci"` | Use a different test command |
@@ -45,10 +71,10 @@ Common options (see `--help` for all of them):
    files are modified, and local `main` matches `origin/main`. If any of these fails, it
    shows a red banner that lists every problem with the commands that fix it, and exits
    with code 1.
-2. **Baseline.** Runs `npm ci` and then the tests. If tests already fail on `main`, it stops,
-   because upgrades can't be verified against a failing suite.
+2. **Baseline.** Runs `npm ci`, asks which packages to upgrade, then runs the tests. If tests
+   already fail on `main`, it stops, because upgrades can't be verified against a failing suite.
 3. **Creates** the working branch.
-4. **Upgrades** each outdated direct dependency in turn:
+4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
    - Runs `npm install <pkg>@<version>`. The original range prefix is kept
      (`^`, `~`, `>=` or an exact version), and so is the section
      (`dependencies`, `devDependencies` or `optionalDependencies`).
@@ -56,7 +82,7 @@ Common options (see `--help` for all of them):
    - If the tests pass, it commits `chore(deps): bump <pkg> from X to Y`.
    - If the install or tests fail, it restores `package.json` and the lockfile,
      re-syncs `node_modules`, and records the package as needing attention.
-5. **Overrides.** Removes each override in turn and keeps the removal only if all of these hold:
+5. **Overrides.** Removes each selected override in turn and keeps the removal only if all of these hold:
    - `npm install` still succeeds,
    - every installed copy of the package is at least the version the override forced,
    - `npm audit` does not start flagging that package,
@@ -106,3 +132,5 @@ npm test   # node:test unit tests for the pure modules
 | `lib/workflow.mjs` | Applies a change, tests it, then commits or rolls back |
 | `lib/semver.mjs` | Minimal semver helpers (pure) |
 | `lib/report.mjs` | Builds the Markdown MR summary (pure) |
+| `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
+| `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`) |
