@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRoundItems, planUpgrades } from '../lib/plan.mjs';
+import { findPeerLinks, groupUpgrades, nextRoundItems, planSteps, planUpgrades } from '../lib/plan.mjs';
 
 const manifest = {
   dependencies: { express: '^4.18.0', lodash: '4.17.20', 'my-fork': 'github:me/fork' },
@@ -68,4 +68,61 @@ test('nextRoundItems drops upgraded packages and keeps failed ones, marked and l
   assert.deepEqual(items.map((i) => i.name), ['chalk', 'lodash', 'axios']);
   assert.deepEqual(items[2].previousAttempt, { to: '2.0.0', reason: 'tests fail with 2.0.0 in `a.test.js`' });
   assert.equal('previousAttempt' in items[0], false);
+});
+
+const tsEslint = [
+  { name: 'eslint', from: '8.57.1', to: '10.14.0' },
+  { name: '@typescript-eslint/eslint-plugin', from: '7.18.0', to: '8.20.0' },
+  { name: '@typescript-eslint/parser', from: '7.18.0', to: '8.20.0' },
+  { name: 'ms', from: '2.0.0', to: '2.1.3' },
+];
+const peers = {
+  '@typescript-eslint/eslint-plugin@8.20.0': {
+    '@typescript-eslint/parser': '^8.0.0 || ^8.0.0-alpha.0',
+    eslint: '^8.57.0 || ^9.0.0 || ^10.0.0',
+  },
+  '@typescript-eslint/eslint-plugin@7.18.0': { '@typescript-eslint/parser': '^7.0.0', eslint: '^8.56.0' },
+  '@typescript-eslint/parser@7.18.0': { eslint: '^8.56.0' },
+};
+const peersOf = (name, version) => peers[`${name}@${version}`] ?? {};
+const PAIR = '@typescript-eslint/eslint-plugin + @typescript-eslint/parser';
+
+test('findPeerLinks finds which upgrade needs which, from both old and new peerDependencies', () => {
+  const links = findPeerLinks(tsEslint, peersOf).map((l) => `${l.from} -> ${l.requires}`);
+  assert.deepEqual(links, [
+    '@typescript-eslint/eslint-plugin -> @typescript-eslint/parser', // the new plugin needs the new parser
+    '@typescript-eslint/parser -> @typescript-eslint/eslint-plugin', // the old plugin rejects the new parser
+    'eslint -> @typescript-eslint/eslint-plugin', // the old plugin rejects eslint 10
+    'eslint -> @typescript-eslint/parser',
+  ]);
+  assert.deepEqual(findPeerLinks([tsEslint[3]], peersOf), [], 'packages not being upgraded are ignored');
+});
+
+test('groupUpgrades groups mutual requirements and keeps one-way ones between units', () => {
+  const items = [...tsEslint];
+  items[2] = { ...items[2], previousAttempt: { to: '8.20.0', reason: 'x' } };
+  const units = groupUpgrades(items, findPeerLinks(tsEslint, peersOf));
+  assert.deepEqual(units.map((u) => u.name), [PAIR, 'eslint', 'ms'], 'required units are listed first');
+  const [pair, eslint, ms] = units;
+  assert.equal(pair.links.length, 2);
+  assert.deepEqual(pair.requires, []);
+  assert.deepEqual(pair.previousAttempt, { to: '8.20.0', reason: 'x' });
+  assert.equal('previousAttempt' in pair.members[1], false, 'members are plain upgrades');
+  assert.deepEqual([...new Set(eslint.requires.map((r) => r.unit))], [PAIR]);
+  assert.deepEqual([ms.links, ms.requires], [[], []]);
+});
+
+test('planSteps pulls in requirements that are not done earlier in the same selection', () => {
+  const units = groupUpgrades(tsEslint, findPeerLinks(tsEslint, peersOf));
+  const byName = Object.fromEntries(units.map((u) => [u.name, u]));
+
+  const alone = planSteps([byName.eslint], units);
+  assert.equal(alone.length, 1);
+  assert.deepEqual(alone[0].members.map((m) => m.name), ['@typescript-eslint/eslint-plugin', '@typescript-eslint/parser', 'eslint']);
+  assert.deepEqual(alone[0].pulledIn, [PAIR]);
+
+  const inOrder = planSteps([byName[PAIR], byName.eslint, byName.ms], units);
+  assert.deepEqual(inOrder.map((s) => [s.name, s.pulledIn.length]), [[PAIR, 0], ['eslint', 0], ['ms', 0]]);
+
+  assert.deepEqual(planSteps([byName[PAIR]], units).map((s) => s.name), [PAIR], 'the pair can go without eslint');
 });

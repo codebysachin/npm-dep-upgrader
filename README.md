@@ -84,7 +84,44 @@ handled on other branches.
   package it depends on, or after fixing the code that broke. Packages that upgraded
   successfully are not offered again.
 - It then asks which overrides to check in the same way.
+- Packages that can't be upgraded one at a time are handled together. See
+  [Packages that depend on each other](#packages-that-depend-on-each-other).
 - Packages and overrides you skipped are listed in the terminal at the end, not in the MR summary.
+
+### Packages that depend on each other
+
+Some packages can only be upgraded together, because their `peerDependencies` don't allow a
+mix of old and new versions. Upgrading one of them alone fails with `ERESOLVE`. Before each
+list is shown, the script reads the `peerDependencies` of the current and the new version of
+every outdated package. The current version comes from `node_modules` and the new one from
+your registry. Two cases come up:
+
+- **They need each other.** Example: `@typescript-eslint/eslint-plugin` 8 needs
+  `@typescript-eslint/parser` 8, and plugin 7 rejects parser 8. They are shown as one entry
+  marked `[linked]`, with the reasons underneath. They are written to `package.json` together,
+  installed with a single `npm install`, tested once, and kept or rolled back together. Typing
+  either package's name selects the whole entry.
+- **One needs the other.** Example: `eslint` 10 is rejected by `@typescript-eslint` 7, but
+  `@typescript-eslint` 8 still accepts `eslint` 8. `eslint` is listed with
+  `needs @typescript-eslint/... too`, and it comes after the packages it needs.
+  - If you pick it after them (or with `all`), it is upgraded on its own once they are done.
+  - If you pick it without them, they are added to the same step.
+  - You can always upgrade `@typescript-eslint` without `eslint`.
+
+```
+  1) 2 packages, upgraded together  [linked]
+         @typescript-eslint/eslint-plugin 7.18.0 → 8.72.2  (major, devDependencies)
+         @typescript-eslint/parser        7.18.0 → 8.72.2  (major, devDependencies)
+         ↳ @typescript-eslint/eslint-plugin@8.72.2 needs @typescript-eslint/parser ^8.72.2
+         ↳ @typescript-eslint/eslint-plugin@7.18.0 only accepts @typescript-eslint/parser ^7.0.0
+  2) eslint                           8.57.1 → 10.14.0  (major, devDependencies)
+       ↳ needs @typescript-eslint/eslint-plugin + @typescript-eslint/parser too; it is added to the same step unless upgraded first
+           @typescript-eslint/eslint-plugin@7.18.0 only accepts eslint ^8.56.0
+```
+
+`--dry-run` shows the same links. Only packages that are outdated are linked. If you
+narrow the run with `--only`, list the related packages too (e.g.
+`--only @typescript-eslint/parser,@typescript-eslint/eslint-plugin`).
 
 Use `--yes` (or `-y`) to skip all questions: everything is upgraded and the result is
 committed. Without a terminal (e.g. in CI) everything is upgraded too, but nothing is
@@ -181,15 +218,18 @@ Common options (see `--help` for all of them):
      Otherwise it calls the host's API with `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` /
      `GITLAB_PRIVATE_TOKEN` (read-only access is enough). The token is sent only to the host
      of your own git remote.
-4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
-   - Runs `npm install <pkg>@<version>`. The original range prefix is kept
+4. **Upgrades** each selected dependency in turn, then offers any that are still outdated.
+   Linked packages count as one step (see
+   [Packages that depend on each other](#packages-that-depend-on-each-other)).
+   - Runs `npm install <pkg>@<version>`. For linked packages it writes the new versions to
+     `package.json` and runs `npm install` once. The original range prefix is kept
      (`^`, `~`, `>=` or an exact version), and so is the section
      (`dependencies`, `devDependencies` or `optionalDependencies`).
    - Runs the tests.
    - If the tests pass, the change stays in the working tree (uncommitted) and the next
      upgrade builds on it.
    - If the install or tests fail, it restores `package.json` and the lockfile to how they
-     were before this one upgrade, and re-syncs `node_modules`.
+     were before this step, and re-syncs `node_modules`.
      The package is offered again in the next round, marked as tried.
 5. **Overrides.** Removes each selected override in turn and keeps the removal only if all of these hold:
    - `npm install` still succeeds,
@@ -275,6 +315,10 @@ The change in progress is rolled back; then run `npm install` to re-sync `node_m
   workspace.
 - Specs that aren't simple ranges (`git:`, `file:`, `npm:` aliases, `1.x`, `^1 || ^2`) are
   skipped and listed in the terminal at the end of the run.
+- Linking only uses `peerDependencies`. Packages that break each other in other ways
+  (e.g. a plugin that expects a newer core but doesn't declare it) show up as a test or
+  install failure. Pick them together in the next round, e.g. `a b`. They will still be
+  two steps, so put the one that is needed first.
 - Overrides that reference a dependency (`"$react"`) or use complex ranges are reported for
   manual review.
 - The override check is deliberately conservative: an override counts as obsolete only if
@@ -292,10 +336,10 @@ npm test   # node:test unit tests for the pure modules
 | `lib/cli.mjs` | Option parsing and the order of steps in a run |
 | `lib/git.mjs` | Main-branch pre-flight, branch creation, change review, the final commit |
 | `lib/npm.mjs` | Wrappers around the npm CLI |
-| `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan (pure) |
+| `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
 | `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
 | `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
-| `lib/semver.mjs` | Minimal semver helpers (pure) |
+| `lib/semver.mjs` | Minimal semver helpers, including npm range matching (pure) |
 | `lib/report.mjs` | Builds the Markdown MR summary (pure) |
 | `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
 | `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`) |

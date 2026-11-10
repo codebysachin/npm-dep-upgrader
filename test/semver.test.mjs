@@ -6,6 +6,7 @@ import {
   highestVersion,
   minVersionFromSpec,
   parseSimpleRange,
+  satisfies,
 } from '../lib/semver.mjs';
 
 test('compareVersions orders releases and prereleases', () => {
@@ -49,4 +50,24 @@ test('highestVersion honours the predicate', () => {
   assert.equal(highestVersion(versions), '2.0.0-beta.1');
   assert.equal(highestVersion(versions, (v) => !v.includes('-')), '1.10.0');
   assert.equal(highestVersion([], () => true), null);
+});
+
+test('satisfies understands the ranges used in peerDependencies', () => {
+  const cases = [
+    ['7.18.0', '^8.0.0 || ^8.0.0-alpha.0', false],
+    ['8.1.0', '^8.0.0 || ^8.0.0-alpha.0', true],
+    ['5.9.2', '>=4.8.4 <5.9.0', false],
+    ['5.8.3', '>=4.8.4 <5.9.0', true],
+    ['1.5.0', '1.x', true],
+    ['2.0.0', '1.x', false],
+    ['3.0.0', '*', true],
+    ['2.3.9', '1.2.3 - 2.3', true],
+    ['2.4.0', '1.2.3 - 2.3', false],
+    ['0.2.5', '^0.2.3', true],
+    ['0.3.0', '^0.2.3', false],
+    ['1.2.0', '>= 1.0', true],
+    ['2.0.0-beta.1', '^1.0.0', false],
+  ];
+  for (const [version, range, expected] of cases) assert.equal(satisfies(version, range), expected, `${version} ${range}`);
+  assert.equal(satisfies('1.0.0', 'latest'), null, 'tags are not understood');
 });

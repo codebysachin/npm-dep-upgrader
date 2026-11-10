@@ -30,3 +30,9 @@ test('invalid input returns an error message', () => {
   assert.match(pick('4-9').error, /out of bounds/);
   assert.match(pick('react').error, /not in the list/);
 });
+
+test('aliases let a member name pick its group', () => {
+  const units = [{ name: 'a + b', members: ['a', 'b'] }, { name: 'c', members: ['c'] }];
+  const result = parseSelection('c b', units, { nameOf: (u) => u.name, aliasesOf: (u) => u.members });
+  assert.deepEqual(result.selected.map((u) => u.name), ['c', 'a + b']);
+});
