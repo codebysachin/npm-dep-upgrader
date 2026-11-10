@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "noEmit": true,
+    "strict": false
+  },
+  "include": [
+    "upgrade-deps.mjs",
+    "lib/**/*.mjs"
+  ]
+}
