@@ -82,6 +82,7 @@ Common options (see `--help` for all of them):
 | `--exclude a,b` / `--only a,b` | Leave out packages, or upgrade only the ones listed |
 | `--test-cmd "npm run test:ci"` | Use a different test command |
 | `--branch <name>` | Name of the working branch (default `chore/deps-upgrade-<date>`) |
+| `--replace-branch` | If that branch already exists, delete it locally and on the remote without asking (⚠ irreversible) |
 | `--no-commit` | Never commit and don't ask; leave the changes uncommitted |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
@@ -108,7 +109,22 @@ Common options (see `--help` for all of them):
      becomes part of the MR unless it is gitignored.
    - If tests already fail on `main`, it stops, because upgrades can't be verified against a
      failing suite.
-3. **Creates** the working branch.
+3. **Creates** the working branch. Whether the name is free is checked at the start, right
+   after the `main` checks, so a clash never shows up after a long install or test run.
+   - **Name is free:** the branch is created from `main`.
+   - **Exists locally with no commits beyond `main`** (for example, left by an earlier run
+     that wasn't committed): it is reused. Resetting it to `main` loses nothing.
+   - **Has its own commits, or exists on the remote** (perhaps with an open MR): it lists
+     those commits and asks:
+     ```
+     1) Use a new branch: chore/deps-upgrade-2026-11-10-2  (the existing branch is not touched)
+     2) Delete chore/deps-upgrade-2026-11-10 locally and on origin and start it fresh from main
+     3) Stop
+     What should this run do? [1-3, Enter = 1]
+     ```
+     Option 2 asks once more before deleting anything, since it removes those commits and
+     closes any open MR from the branch. With `--yes`, or without a terminal, it takes option 1;
+     it deletes only with `--replace-branch`.
 4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
    - Runs `npm install <pkg>@<version>`. The original range prefix is kept
      (`^`, `~`, `>=` or an exact version), and so is the section
