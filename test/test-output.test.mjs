@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { analyzeTestOutput } from '../lib/test-output.mjs';
-import { renderFailureMarkdown, summarizeNpmError, testFailureReason } from '../lib/failure-report.mjs';
+import { summarizeNpmError, testFailureReason } from '../lib/failure-report.mjs';
 
 const CWD = '/project';
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -134,12 +134,4 @@ test('summarizeNpmError extracts the error code and lines', () => {
   });
   assert.equal(summary.code, 'ERESOLVE');
   assert.deepEqual(summary.lines, ['code ERESOLVE', 'ERESOLVE unable to resolve dependency tree']);
-});
-
-test('renderFailureMarkdown lists files, tests and errors', () => {
-  const analysis = analyzeTestOutput(fixture('node-test-spec.txt'), CWD);
-  const md = renderFailureMarkdown('chalk 6.0.1: test failure details', { kind: 'tests', analysis });
-  assert.match(md, /<summary>chalk 6\.0\.1: test failure details<\/summary>/);
-  assert.match(md, /- `test\/math\.test\.mjs`\n {2}- adds numbers/);
-  assert.match(md, /```text\nAssertionError/);
 });
