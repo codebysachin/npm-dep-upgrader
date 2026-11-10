@@ -35,6 +35,7 @@ Common options (see `--help` for all of them):
 | `--test-cmd "npm run test:ci"` | Use a different test command |
 | `--branch <name>` | Name of the working branch (default `chore/deps-upgrade-<date>`) |
 | `--no-commit` | Leave the changes uncommitted |
+| `--no-squash` | Keep one commit per change instead of squashing at the end |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
 
@@ -64,6 +65,12 @@ Common options (see `--help` for all of them):
    Otherwise the override is restored and the summary says why it stays.
 6. **Summary.** Prints the MR summary and saves it to the log folder. If nothing changed, it
    deletes the empty branch.
+7. **Squash.** If the run finishes successfully, it squashes all of its commits into a single
+   commit titled like `chore(deps): upgrade 4 packages and remove 1 obsolete override`, with
+   the full summary as the commit message body. GitHub and GitLab prefill a new MR's
+   description from a single commit's message, so the summary appears in the MR. If the run
+   stops part-way (an error or Ctrl+C), the per-package commits are left as they are. If a
+   commit hook rejects the squash commit, the original commits are restored.
 
 Full command output for every step goes to `$TMPDIR/npm-dep-upgrader/<timestamp>/`. The
 project's working tree is never used for logs.
