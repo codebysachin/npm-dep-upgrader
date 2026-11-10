@@ -11,7 +11,8 @@ It uses **only Node.js built-in modules**, with no third-party dependencies to a
 ## Requirements
 
 - Node.js >= 18.11 and npm
-- git, with the project on `main` and in sync with `origin/main`
+- git. The script can start on `main` or on any other branch (see
+  [Running on another branch](#running-on-another-branch)).
 - A `test` script in `package.json` (or pass `--test-cmd`)
 
 ## Usage
@@ -26,6 +27,38 @@ Preview without changing anything:
 ```bash
 node upgrade-deps.mjs --dry-run
 ```
+
+### Running on another branch
+
+If you start the script on a branch other than `main`, it doesn't stop. It first reports on
+that branch: how far it is from `main`, what is outdated, and which overrides would be
+re-checked. Then it asks where the upgrade should happen:
+
+```
+▶ You are on "feature/login", not "main": checking its dependencies first
+  feature/login is 1 commit(s) ahead of and 0 behind origin/main.
+▶ Dependency report for feature/login
+Outdated, can be upgraded (1):
+  ms     2.0.0 → 2.1.3  (minor, dependencies)
+
+  1) Create a new branch from main and upgrade there (recommended: separate MR)
+  2) Upgrade on feature/login (the changes become part of this branch and its MR)
+  3) Stop here; the report above is all I need
+  Where should the upgrade happen? [1-3, Enter = 1]
+```
+
+- **1. New branch from `main`:** switches to `main` (your branch is left as it is) and carries
+  on exactly as if you had started on `main`. This needs a clean working tree, so it isn't
+  offered while the branch has uncommitted changes. Commit or stash them first.
+- **2. This branch:** upgrades on the current branch, and the final commit lands on it. The
+  branch must not be behind or diverged from its remote branch. If it is only behind, the
+  script offers a fast-forward pull. `package.json` and the lockfile must have no uncommitted
+  edits. Other uncommitted files are fine and are never committed.
+- **3. Stop:** nothing is changed.
+
+Without a terminal (or with `--yes`), the script only prints the report unless you say what
+to do: `--from-main` for option 1, or `--on-current-branch` for option 2. `--dry-run` on a
+branch prints the report and stops.
 
 ### Choosing what to upgrade
 
@@ -85,14 +118,17 @@ Common options (see `--help` for all of them):
 | `--replace-branch` | If that branch already exists, delete it locally and on the remote without asking (⚠ irreversible). Refuses if an MR is open from it, or if that can't be checked |
 | `--git-host github\|gitlab` | Say which host the remote is, when the URL doesn't make it obvious (e.g. self-hosted GitLab) |
 | `--no-commit` | Never commit and don't ask; leave the changes uncommitted |
+| `--from-main` / `--on-current-branch` | When started on another branch without a terminal: upgrade on a new branch from `main`, or on the current branch |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
 
 ## What a run does
 
-1. **Pre-flight.** Checks that the project is a git repository, you are on `main`, no tracked
-   files are modified, and local `main` matches `origin/main`. It runs `git fetch` to compare
-   with the remote, which never changes your files.
+1. **Pre-flight.** If you are on another branch, it reports on it first and asks where to
+   upgrade (see [Running on another branch](#running-on-another-branch)). For an upgrade from
+   `main`, it checks that the project is a git repository, you are on `main`, no tracked files
+   are modified, and local `main` matches `origin/main`. It runs `git fetch` to compare with
+   the remote, which never changes your files.
    - If the only problem is that a clean `main` is **behind** the remote, it lists the new
      commits and asks `Pull them now (git pull --ff-only origin main)? [y/N]`. A fast-forward
      pull can't conflict or lose work. `--yes` pulls without asking.
