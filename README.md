@@ -75,7 +75,8 @@ handled on other branches.
 ```
 
 - Type numbers, ranges or names, e.g. `3,1,5-7` or `lodash ms`. They are upgraded in the
-  order you type them. `all` picks everything, `none` picks nothing.
+  order you type them. `all` picks everything, `none` picks nothing, and `q` quits (see
+  [Quitting](#quitting)).
 - When those are done, it checks again and offers any packages that are still outdated.
   Pick more, or press **Enter** to finish.
 - It then asks which overrides to check in the same way.
@@ -246,8 +247,22 @@ working tree. The folder is printed at the start and the end of the run.
 11:08:45  ✔  PASS  upgrade ms 2.0.0 → 2.1.3                  005-upgrade-ms.log
 ```
 
-Press Ctrl+C at any time. The change in progress is rolled back, then run
-`npm install` to re-sync `node_modules`.
+## Quitting
+
+At **every question** the script asks (which packages, which overrides, where to upgrade,
+whether to pull, what to do about an existing branch, whether to commit), you can type `q`
+(or `quit`) to stop. Lists of choices also show a `q) Quit` line.
+
+What happens when you quit:
+- **Upgrades already done are kept**, uncommitted, in the working tree. Each one passed the
+  tests. The script lists them and prints the commands to review (`git diff`), commit (with
+  a ready-made commit message for what was done so far) or discard them.
+- **If nothing was changed yet**, it says so. If it had already created the working branch,
+  it removes that empty branch and switches back to `main`.
+- The exit code is 0, because quitting is a normal choice and not an error.
+
+While npm or the tests are running there is no question on screen, so use **Ctrl+C** to stop.
+The change in progress is rolled back; then run `npm install` to re-sync `node_modules`.
 
 ## Limitations
 
