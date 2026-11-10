@@ -9,11 +9,10 @@ test('buildReport lists only the changes in the MR', () => {
     failed: [{ name: 'chalk', from: '4.1.2', to: '6.0.1', reason: 'tests fail' }],
     skipped: [{ name: 'ms', reason: 'not selected' }],
     overridesKept: [{ keyPath: ['semver'], spec: '7.5.4', reason: 'still needed' }],
-    testCommand: 'npm test',
   });
   assert.match(report, /\| `lodash` \| 4\.17\.20 \| 4\.18\.1 \|/);
   assert.match(report, /\| `minimist` \| \^1\.2\.6 \| minimist@1\.2\.8 \|/);
-  for (const leftOut of ['chalk', 'ms', 'semver', 'Not upgraded', 'Skipped', 'still required']) {
+  for (const leftOut of ['chalk', 'ms', 'semver', 'Not upgraded', 'Skipped', 'still required', 'one at a time']) {
     assert.equal(report.includes(leftOut), false, `"${leftOut}" should not be in the MR summary`);
   }
 });
