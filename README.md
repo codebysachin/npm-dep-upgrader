@@ -79,6 +79,10 @@ handled on other branches.
   [Quitting](#quitting)).
 - When those are done, it checks again and offers any packages that are still outdated.
   Pick more, or press **Enter** to finish.
+- A package whose upgrade failed stays in that list, at the end, marked `[tried, failed]`
+  with the reason underneath. You can pick it again, for example after upgrading a
+  package it depends on, or after fixing the code that broke. Packages that upgraded
+  successfully are not offered again.
 - It then asks which overrides to check in the same way.
 - Packages and overrides you skipped are listed in the terminal at the end, not in the MR summary.
 
@@ -186,6 +190,7 @@ Common options (see `--help` for all of them):
      upgrade builds on it.
    - If the install or tests fail, it restores `package.json` and the lockfile to how they
      were before this one upgrade, and re-syncs `node_modules`.
+     The package is offered again in the next round, marked as tried.
 5. **Overrides.** Removes each selected override in turn and keeps the removal only if all of these hold:
    - `npm install` still succeeds,
    - every installed copy of the package is at least the version the override forced,

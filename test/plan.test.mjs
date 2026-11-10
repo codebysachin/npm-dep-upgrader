@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planUpgrades } from '../lib/plan.mjs';
+import { nextRoundItems, planUpgrades } from '../lib/plan.mjs';
 
 const manifest = {
   dependencies: { express: '^4.18.0', lodash: '4.17.20', 'my-fork': 'github:me/fork' },
@@ -57,4 +57,15 @@ test('exclude skips packages with a reason', () => {
   const { planned, skipped } = plan({ exclude: new Set(['express']) });
   assert.equal(planned.some((p) => p.name === 'express'), false);
   assert.match(skipped.find((s) => s.name === 'express').reason, /excluded/);
+});
+
+test('nextRoundItems drops upgraded packages and keeps failed ones, marked and listed last', () => {
+  const planned = ['axios', 'chalk', 'lodash', 'ms'].map((name) => ({ name, to: '2.0.0' }));
+  const items = nextRoundItems(planned, {
+    upgraded: new Set(['ms']),
+    failures: new Map([['axios', { to: '2.0.0', reason: 'tests fail with 2.0.0 in `a.test.js`' }]]),
+  });
+  assert.deepEqual(items.map((i) => i.name), ['chalk', 'lodash', 'axios']);
+  assert.deepEqual(items[2].previousAttempt, { to: '2.0.0', reason: 'tests fail with 2.0.0 in `a.test.js`' });
+  assert.equal('previousAttempt' in items[0], false);
 });
