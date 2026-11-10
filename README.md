@@ -2,8 +2,9 @@
 
 Upgrades outdated npm dependencies **one at a time**, runs the test suite after
 every upgrade, and keeps an upgrade only if the tests pass. It then removes
-`overrides` from `package.json` that are no longer needed. At the end it prints a
-Markdown summary you can paste into your merge request.
+`overrides` from `package.json` that are no longer needed. Nothing is committed while it
+works. At the end it shows what changed and asks whether to commit, using a Markdown
+summary of the successful upgrades as the commit message, ready for your merge request.
 
 It uses **only Node.js built-in modules**, with no third-party dependencies to audit or keep patched.
 
@@ -45,23 +46,43 @@ handled on other branches.
 - When those are done, it checks again and offers any packages that are still outdated.
   Pick more, or press **Enter** to finish.
 - It then asks which overrides to check in the same way.
-- Packages and overrides you skipped are listed in the MR summary.
+- Packages and overrides you skipped are listed in the terminal at the end, not in the MR summary.
 
-Use `--yes` (or `-y`) to skip the questions and upgrade everything. That is also what
-happens when there is no terminal, e.g. in CI. Passing `--only a,b` also skips the
-questions.
+Use `--yes` (or `-y`) to skip all questions: everything is upgraded and the result is
+committed. Without a terminal (e.g. in CI) everything is upgraded too, but nothing is
+committed unless `--yes` is given. Passing `--only a,b` skips the package question, but
+you are still asked before anything is committed.
+
+### Reviewing and committing
+
+```
+▶ Changes made (not committed yet)
+  M package-lock.json
+  M package.json
+
+  package.json
+    @@ -7,9 +7,9 @@
+    -    "lodash": "4.17.20",
+    +    "lodash": "4.18.1",
+
+  Are you happy to commit these changes? [y/N]
+```
+
+- **y** commits `package.json` and the lockfile in one commit. The commit message is the MR
+  summary, so GitHub and GitLab fill in the MR description from it.
+- **n** (or Enter) leaves everything uncommitted on the working branch, and prints the
+  commands to review (`git diff`), commit (using the saved message) or discard the changes.
 
 Common options (see `--help` for all of them):
 
 | Option | Purpose |
 | --- | --- |
-| `-y`, `--yes` | Don't ask; upgrade every outdated package and check every override |
+| `-y`, `--yes` | Don't ask; upgrade every outdated package, check every override and commit |
 | `--target latest\|minor\|patch` | `minor` stays within the current major, `patch` within the current minor |
 | `--exclude a,b` / `--only a,b` | Leave out packages, or upgrade only the ones listed |
 | `--test-cmd "npm run test:ci"` | Use a different test command |
 | `--branch <name>` | Name of the working branch (default `chore/deps-upgrade-<date>`) |
-| `--no-commit` | Leave the changes uncommitted |
-| `--no-squash` | Keep one commit per change instead of squashing at the end |
+| `--no-commit` | Never commit and don't ask; leave the changes uncommitted |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
 
@@ -82,24 +103,24 @@ Common options (see `--help` for all of them):
      (`^`, `~`, `>=` or an exact version), and so is the section
      (`dependencies`, `devDependencies` or `optionalDependencies`).
    - Runs the tests.
-   - If the tests pass, it commits `chore(deps): bump <pkg> from X to Y`.
-   - If the install or tests fail, it restores `package.json` and the lockfile,
-     re-syncs `node_modules`, and records the package as needing attention.
+   - If the tests pass, the change stays in the working tree (uncommitted) and the next
+     upgrade builds on it.
+   - If the install or tests fail, it restores `package.json` and the lockfile to how they
+     were before this one upgrade, and re-syncs `node_modules`.
 5. **Overrides.** Removes each selected override in turn and keeps the removal only if all of these hold:
    - `npm install` still succeeds,
    - every installed copy of the package is at least the version the override forced,
    - `npm audit` does not start flagging that package,
    - the tests pass.
 
-   Otherwise the override is restored and the summary says why it stays.
-6. **Summary.** Prints the MR summary and saves it to the log folder. If nothing changed, it
-   deletes the empty branch.
-7. **Squash.** If the run finishes successfully, it squashes all of its commits into a single
-   commit titled like `chore(deps): upgrade 4 packages and remove 1 obsolete override`, with
-   the full summary as the commit message body. GitHub and GitLab prefill a new MR's
-   description from a single commit's message, so the summary appears in the MR. If the run
-   stops part-way (an error or Ctrl+C), the per-package commits are left as they are. If a
-   commit hook rejects the squash commit, the original commits are restored.
+   Otherwise the override is restored, and the terminal says why it stays.
+6. **Summary.** Prints the MR summary and saves it to the log folder. The summary lists only
+   the successful upgrades and removed overrides. What was not changed, and why, is printed
+   separately in the terminal. If nothing changed, it deletes the empty branch.
+7. **Review and commit.** Shows the changed files and the `package.json` diff, then asks
+   whether to commit. The commit is titled like
+   `chore(deps): upgrade 4 packages and remove 1 obsolete override`, and its body is the MR
+   summary. If a commit hook rejects the commit, the changes are left uncommitted.
 
 ## When tests fail
 
@@ -123,10 +144,10 @@ runners it still picks out error messages and the places in your code where they
   ⚠ rolled back chalk to 4.1.2
 ```
 
-The same details appear in the MR summary. The reason column names the failing test
-files, and a collapsible block under the table lists the tests, errors and locations. For
-`npm install` failures, it shows npm's error code with a hint (for example
-`ERESOLVE (peer dependency conflict)`) and npm's error lines.
+For `npm install` failures, it shows npm's error code with a hint (for example
+`ERESOLVE (peer dependency conflict)`) and npm's error lines. Failures stay out of the MR
+summary; at the end of the run the terminal lists each package that was not upgraded, with
+the failing test files.
 
 ## Logs
 
@@ -138,6 +159,7 @@ working tree. The folder is printed at the start and the end of the run.
 | `run.log` | Start here. One line per step: time, PASS/FAIL, what was done, and the step's log file |
 | `NNN-<step>.log` | One file per step: a header naming the step, then every command it ran (exit status, duration, stdout and stderr), a `FAILURE ANALYSIS` section if it failed, and a `ROLLBACK` section if the change was undone |
 | `mr-summary.md` | The Markdown summary for the MR |
+| `commit-message.txt` | Commit title plus the summary, for `git commit -F` if you commit yourself |
 
 ```
 11:08:42  ✔  PASS  baseline install                          001-baseline-install.log
@@ -154,7 +176,7 @@ Press Ctrl+C at any time. The change in progress is rolled back, then run
 - Supports npm only, not yarn `resolutions` or pnpm overrides, and only the root package of a
   workspace.
 - Specs that aren't simple ranges (`git:`, `file:`, `npm:` aliases, `1.x`, `^1 || ^2`) are
-  skipped and listed in the summary.
+  skipped and listed in the terminal at the end of the run.
 - Overrides that reference a dependency (`"$react"`) or use complex ranges are reported for
   manual review.
 - The override check is deliberately conservative: an override counts as obsolete only if
@@ -170,15 +192,15 @@ npm test   # node:test unit tests for the pure modules
 | Module | Responsibility |
 | --- | --- |
 | `lib/cli.mjs` | Option parsing and the order of steps in a run |
-| `lib/git.mjs` | Main-branch pre-flight, branch creation, commits |
+| `lib/git.mjs` | Main-branch pre-flight, branch creation, change review, the final commit |
 | `lib/npm.mjs` | Wrappers around the npm CLI |
 | `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan (pure) |
 | `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
-| `lib/workflow.mjs` | Applies a change, tests it, then commits or rolls back |
+| `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
 | `lib/semver.mjs` | Minimal semver helpers (pure) |
 | `lib/report.mjs` | Builds the Markdown MR summary (pure) |
 | `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
 | `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`) |
 | `lib/test-output.mjs` | Finds failing files, tests, errors and locations in test output (pure) |
-| `lib/failure-report.mjs` | Formats failures for the terminal, log files and MR summary (pure) |
+| `lib/failure-report.mjs` | Formats failures for the terminal and log files (pure) |
 | `lib/logfile.mjs` | Layout of `run.log` and the per-step log files |
