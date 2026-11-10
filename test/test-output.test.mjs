@@ -2,7 +2,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { analyzeTestOutput } from '../lib/test-output.mjs';
-import { summarizeNpmError, testFailureReason } from '../lib/failure-report.mjs';
+import { lockfileSyncProblems, summarizeNpmError, testFailureReason } from '../lib/failure-report.mjs';
+
+test('lockfileSyncProblems recognises an out-of-sync lockfile', () => {
+  const stderr = [
+    'npm error code EUSAGE',
+    'npm error',
+    'npm error `npm ci` can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.',
+    'npm error',
+    'npm error Missing: lodash@4.18.1 from lock file',
+    'npm error Invalid: lock file\'s ms@2.0.0 does not satisfy ms@~2.1.0',
+    'npm error Clean install a project',
+  ].join('\n');
+  assert.deepEqual(lockfileSyncProblems({ stdout: '', stderr }), [
+    'Missing: lodash@4.18.1 from lock file',
+    "Invalid: lock file's ms@2.0.0 does not satisfy ms@~2.1.0",
+  ]);
+  assert.equal(lockfileSyncProblems({ stdout: '', stderr: 'npm error code ERESOLVE\nnpm error could not resolve' }), null);
+});
 
 const CWD = '/project';
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
