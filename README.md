@@ -89,14 +89,25 @@ Common options (see `--help` for all of them):
 ## What a run does
 
 1. **Pre-flight.** Checks that the project is a git repository, you are on `main`, no tracked
-   files are modified, and local `main` matches `origin/main`. If any of these fails, it
-   shows a red banner that lists every problem with the commands that fix it, and exits
-   with code 1.
+   files are modified, and local `main` matches `origin/main`. It runs `git fetch` to compare
+   with the remote, which never changes your files.
+   - If the only problem is that a clean `main` is **behind** the remote, it lists the new
+     commits and asks `Pull them now (git pull --ff-only origin main)? [y/N]`. A fast-forward
+     pull can't conflict or lose work. `--yes` pulls without asking.
+   - Anything else (uncommitted changes, another branch checked out, or local commits not on
+     the remote) needs your judgement, so it is never fixed automatically. It shows a red
+     banner listing every problem with the commands that fix it, and exits with code 1.
 2. **Baseline.** Installs dependencies, asks which packages to upgrade, then runs the tests.
-   With a lockfile it runs `npm ci`, so the baseline is exactly what is committed. Without
-   one it runs `npm install`, which creates `package-lock.json`; that file becomes part of
-   the MR unless it is gitignored. If tests
-   already fail on `main`, it stops, because upgrades can't be verified against a failing suite.
+   - With a lockfile it runs `npm ci`, so the baseline is exactly what is committed on `main`.
+     A lockfile that is merely older than the latest versions is fine; that is what the
+     upgrade fixes.
+   - If `package.json` was changed without updating the lockfile, `npm ci` refuses. The script
+     then stops and explains how to sync the lockfile on `main` first, rather than mixing
+     that repair into the upgrade MR.
+   - Without a lockfile it runs `npm install`, which creates `package-lock.json`; that file
+     becomes part of the MR unless it is gitignored.
+   - If tests already fail on `main`, it stops, because upgrades can't be verified against a
+     failing suite.
 3. **Creates** the working branch.
 4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
    - Runs `npm install <pkg>@<version>`. The original range prefix is kept
