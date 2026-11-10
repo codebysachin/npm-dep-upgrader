@@ -163,6 +163,7 @@ Common options (see `--help` for all of them):
 | `--from-main` / `--on-current-branch` | When started on another branch without a terminal: upgrade on a new branch from `main`, or on the current branch |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
+| `-v`, `--verbose` | Print each command's output on screen, not only a link to its log file. See [Commands on screen](#commands-on-screen) |
 
 ## What a run does
 
@@ -282,6 +283,7 @@ working tree. The folder is printed at the start and the end of the run.
 | --- | --- |
 | `run.log` | Start here. One line per step: time, PASS/FAIL, what was done, and the step's log file |
 | `NNN-<step>.log` | One file per step: a header naming the step, then every command it ran (exit status, duration, stdout and stderr), a `FAILURE ANALYSIS` section if it failed, and a `ROLLBACK` section if the change was undone |
+| `commands.log` | Commands that don't belong to a step (mostly git checks), with their output |
 | `mr-summary.md` | The Markdown summary for the MR |
 | `commit-message.txt` | Commit title plus the summary, for `git commit -F` if you commit yourself |
 
@@ -291,6 +293,28 @@ working tree. The folder is printed at the start and the end of the run.
 11:08:44  ✖  FAIL  upgrade chalk 4.1.2 → 6.0.1 (tests failed) 004-upgrade-chalk.log
 11:08:45  ✔  PASS  upgrade ms 2.0.0 → 2.1.3                  005-upgrade-ms.log
 ```
+
+### Commands on screen
+
+Every command the script runs is shown under the step that ran it. While a command runs, a
+`⋯ $ <command>` line shows what it is waiting for. When the command finishes, that line is
+replaced by the result. The output stays folded away by default:
+
+```
+▶ [1/1] ms  2.0.0 → 2.1.3  (minor)
+    ✔ $ npm install ms@~2.1.3 --save-prod --no-audit --no-fund  · 0.2s  ▸ output (1 line): 008-upgrade-ms.log
+    ✔ $ npm test  · 0.1s  ▸ output (3 lines): 008-upgrade-ms.log
+  ✔ tests passed (0.1s)
+```
+
+- `✔` means exit code 0. `· exit 1` is shown neutrally, because some commands exit non-zero
+  normally (`npm outdated` does whenever something is outdated). Real failures get their own
+  `✖` message from the step.
+- `▸ output (…): <file>` is a link to the log file that holds the full output. Terminals with
+  hyperlink support can open it with a click (usually Cmd/Ctrl+click), for example iTerm2,
+  VS Code, Windows Terminal and GNOME Terminal. Other terminals print the file name, which is
+  in the logs folder.
+- `--verbose` (`-v`) unfolds it: each command's output is printed under it, prefixed with `│`.
 
 ## Quitting
 
@@ -336,6 +360,7 @@ npm test   # node:test unit tests for the pure modules
 | `lib/cli.mjs` | Option parsing and the order of steps in a run |
 | `lib/git.mjs` | Main-branch pre-flight, branch creation, change review, the final commit |
 | `lib/npm.mjs` | Wrappers around the npm CLI |
+| `lib/command-echo.mjs` | Shows each command and its result on screen (folded, or full with `--verbose`) |
 | `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
 | `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
 | `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
