@@ -82,7 +82,8 @@ Common options (see `--help` for all of them):
 | `--exclude a,b` / `--only a,b` | Leave out packages, or upgrade only the ones listed |
 | `--test-cmd "npm run test:ci"` | Use a different test command |
 | `--branch <name>` | Name of the working branch (default `chore/deps-upgrade-<date>`) |
-| `--replace-branch` | If that branch already exists, delete it locally and on the remote without asking (⚠ irreversible) |
+| `--replace-branch` | If that branch already exists, delete it locally and on the remote without asking (⚠ irreversible). Refuses if an MR is open from it, or if that can't be checked |
+| `--git-host github\|gitlab` | Say which host the remote is, when the URL doesn't make it obvious (e.g. self-hosted GitLab) |
 | `--no-commit` | Never commit and don't ask; leave the changes uncommitted |
 | `--skip-overrides` | Don't check overrides |
 | `--report mr.md` | Also write the summary to a file |
@@ -122,9 +123,23 @@ Common options (see `--help` for all of them):
      3) Stop
      What should this run do? [1-3, Enter = 1]
      ```
-     Option 2 asks once more before deleting anything, since it removes those commits and
-     closes any open MR from the branch. With `--yes`, or without a terminal, it takes option 1;
-     it deletes only with `--replace-branch`.
+     Option 2 asks once more before deleting anything, since it removes those commits. With
+     `--yes`, or without a terminal, it takes option 1; it deletes only with `--replace-branch`.
+   - **Open MR check.** If the branch exists on the remote, the script first asks the git host
+     whether an MR (GitLab) or pull request (GitHub) is open from it:
+
+     | Result | Interactive run | `--replace-branch` |
+     | --- | --- | --- |
+     | MR open | The MR is shown and **deleting is not offered**; only a new name or stop | Refuses and shows the MR |
+     | No MR open | All three options | Deletes |
+     | Couldn't check | Warns, and the delete confirmation reminds you to check yourself | Refuses |
+
+     The host is worked out from the remote URL: `github.com` means GitHub, and a host with
+     "gitlab" in its name (or matching `GITLAB_HOST`) means GitLab. Use `--git-host` for
+     anything else. The check uses the `gh` or `glab` CLI if it is installed and logged in.
+     Otherwise it calls the host's API with `GITHUB_TOKEN` / `GH_TOKEN` or `GITLAB_TOKEN` /
+     `GITLAB_PRIVATE_TOKEN` (read-only access is enough). The token is sent only to the host
+     of your own git remote.
 4. **Upgrades** each selected dependency in turn, then offers any that are still outdated:
    - Runs `npm install <pkg>@<version>`. The original range prefix is kept
      (`^`, `~`, `>=` or an exact version), and so is the section
@@ -231,3 +246,4 @@ npm test   # node:test unit tests for the pure modules
 | `lib/test-output.mjs` | Finds failing files, tests, errors and locations in test output (pure) |
 | `lib/failure-report.mjs` | Formats failures for the terminal and log files (pure) |
 | `lib/logfile.mjs` | Layout of `run.log` and the per-step log files |
+| `lib/merge-requests.mjs` | Finds open GitHub PRs / GitLab MRs from a branch (`gh`/`glab`, or the REST API with a token) |
