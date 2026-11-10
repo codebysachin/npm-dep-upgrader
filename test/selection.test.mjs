@@ -17,7 +17,7 @@ test('numbers, ranges and names keep the typed order', () => {
 test('all and none keywords', () => {
   assert.equal(pick('all').length, 5);
   assert.deepEqual(pick('none'), []);
-  assert.deepEqual(pick('q'), []);
+  assert.ok('error' in pick('q'), '"q" means quit (handled by the prompt), never "select nothing"');
 });
 
 test('empty input depends on the round', () => {
