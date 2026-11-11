@@ -8,7 +8,7 @@
  *   npm ls <pkg> --all --json | audit --json | test
  *
  * The registry is a JSON file named by FAKE_NPM_REGISTRY:
- *   { "<name>": { "<version>": { "peerDependencies"?: {}, "dependencies"?: {}, "vulnerable"?: true } } }
+ *   { "<name>": { "<version>": { "peerDependencies"?: {}, "dependencies"?: {}, "repository"?: "", "vulnerable"?: true } } }
  * Installs are flat (one version per package) and are written to node_modules/<name>/package.json
  * and package-lock.json, so tests can read the installed versions.
  */
@@ -64,7 +64,15 @@ function resolveTree(m, keep) {
   for (const [name, version] of Object.entries(tree)) {
     for (const [peer, range] of Object.entries(registry[name][version].peerDependencies ?? {})) {
       if (tree[peer] && satisfies(tree[peer], range) !== true) {
-        fail('ERESOLVE', ['ERESOLVE unable to resolve dependency tree', `peer ${peer}@"${range}" from ${name}@${version}`]);
+        fail('ERESOLVE', [
+          'ERESOLVE unable to resolve dependency tree',
+          '',
+          `While resolving: ${m.name}@${m.version}`,
+          `Found: ${peer}@${tree[peer]}`,
+          '',
+          'Could not resolve dependency:',
+          `peer ${peer}@"${range}" from ${name}@${version}`,
+        ]);
       }
     }
   }
@@ -76,8 +84,8 @@ function writeTree(m, tree) {
   for (const [name, version] of Object.entries(tree)) {
     const dir = join(cwd, 'node_modules', name);
     mkdirSync(dir, { recursive: true });
-    const { peerDependencies, dependencies } = registry[name][version];
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version, peerDependencies, dependencies }, null, 2));
+    const { peerDependencies, dependencies, repository } = registry[name][version];
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version, peerDependencies, dependencies, repository }, null, 2));
   }
   const root = { name: m.name, version: m.version, dependencies: m.dependencies, devDependencies: m.devDependencies };
   const packages = { '': root };
