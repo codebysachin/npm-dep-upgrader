@@ -128,6 +128,43 @@ committed. Without a terminal (e.g. in CI) everything is upgraded too, but nothi
 committed unless `--yes` is given. Passing `--only a,b` skips the package question, but
 you are still asked before anything is committed.
 
+### Automatic mode (`--auto`)
+
+`--auto` upgrades every outdated package without asking which, and tries harder before
+giving up on one. For each package, or group of linked packages:
+
+1. **As planned.** Install the new version and run the tests, as in a normal run.
+2. **Together with related packages.** If that fails, try once more together with:
+   - the packages npm names in a peer-dependency conflict (`ERESOLVE`), which also catches
+     conflicts that come from a dependency of a dependency, and
+   - the packages released from the same repository (the `repository` field), or under the
+     same npm scope (`@acme/*`; `@types/*` doesn't count, since those are unrelated).
+3. **A smaller upgrade.** If a single package still fails, try the newest release in its
+   current major, then in its current minor. For example, if express 4.18 → 5.1 fails,
+   try 4.21.
+
+Each package or group gets at most 4 attempts per pass. After a pass, the packages that
+failed are tried again, but only if something else was upgraded since they last failed.
+The run stops when a pass upgrades nothing new.
+
+Every attempt is tested and rolled back if it fails, so only combinations that pass are
+kept. The MR summary still lists only what was upgraded. The terminal also shows what had
+to be tried:
+
+```
+▶ Upgraded after more than one attempt
+  gamma 1.0.0 → 1.5.0  (instead of 2.0.0)
+      tried 1. gamma 2.0.0: tests fail with 2.0.0: Error: boom
+
+▶ Not changed in this run (shown here only, not in the MR summary)
+  ⚠ delta 2.0.0: tests fail with 2.0.0: Error: boom
+```
+
+`--auto` still asks about the branch and asks before committing. Add `--yes` for a run with
+no questions at all, for example in a scheduled CI job: `--auto --yes`. Overrides are all
+checked without asking. `--only`, `--exclude` and `--target` limit what `--auto` tries, as
+in a normal run.
+
 ### Reviewing and committing
 
 ```
@@ -152,6 +189,7 @@ Common options (see `--help` for all of them):
 
 | Option | Purpose |
 | --- | --- |
+| `--auto` | Upgrade everything without asking which; retry failures with related packages, then as smaller upgrades. See [Automatic mode](#automatic-mode---auto) |
 | `-y`, `--yes` | Don't ask; upgrade every outdated package, check every override and commit |
 | `--target latest\|minor\|patch` | `minor` stays within the current major, `patch` within the current minor |
 | `--exclude a,b` / `--only a,b` | Leave out packages, or upgrade only the ones listed |
@@ -360,7 +398,7 @@ npm run test:e2e    # the real CLI against throwaway projects
 ### Tests
 
 - **Unit tests** (`test/*.test.mjs`) cover the pure modules: the plan, linking, the upgrade-rounds
-  loop, selection, semver, overrides, the report, test-output parsing and command display.
+  loop, `--auto`'s retries, selection, semver, overrides, the report, test-output parsing and command display.
 - **End-to-end tests** (`test/e2e/`) run `upgrade-deps.mjs` against a throwaway git project with a
   local bare remote, in a temp folder, with your git config isolated. `npm` there is
   `test/e2e/support/fake-npm.mjs`, an offline stand-in that resolves versions from a JSON registry
@@ -398,6 +436,7 @@ cli.mjs ─ options ─ session ─ branch-setup ─ rounds (first pick) ─ bas
 | `lib/session.mjs` | What a run shares between phases: options, context, whether it can ask questions (`prompts`), the workspace and the results |
 | `lib/branch-setup.mjs` | Which branch the run works on, that it is up to date, branch-name clashes, the baseline install |
 | `lib/rounds.mjs` | Lists outdated packages, lets the user pick, runs the upgrade rounds (`runRounds` is unit-tested) and the overrides review |
+| `lib/auto.mjs` | `--auto`: retries with related packages and smaller upgrades, and the passes (`runAuto` is unit-tested) |
 | `lib/finish.mjs` | Summary, MR text, showing the changes, the commit, and what to print when quitting |
 | `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
 | `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |

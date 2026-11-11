@@ -250,3 +250,62 @@ test('started on another branch: reports only, unless told where to upgrade', ()
   assert.equal(branch(), 'feature');
   assert.match(lastCommit(), /^chore\(deps\): upgrade 2 packages/);
 });
+
+test('--auto retries a peer conflict together with the package npm names in it', () => {
+  // alpha@2 needs lib-x@2, whose peer needs core@2: not visible from alpha's own peerDependencies.
+  project = createProject({
+    packageJson: { name: 'app', version: '1.0.0', private: true, scripts: { test: 'node check.js' }, dependencies: { alpha: '^1.0.0', core: '^1.0.0' } },
+    registry: {
+      alpha: { '1.0.0': {}, '2.0.0': { dependencies: { 'lib-x': '^2.0.0' } } },
+      'lib-x': { '2.0.0': { peerDependencies: { core: '^2.0.0' } } },
+      core: versions('1.0.0', '2.0.0'),
+    },
+    files: { 'check.js': failWhen('false') },
+  });
+  const { status, output } = project.run(['--auto', '--yes', '--branch', BRANCH]);
+
+  assert.equal(status, 0, output);
+  assert.match(output, /ERESOLVE/);
+  assert.match(output, /attempt 2: together with core/);
+  assert.match(output, /2 upgraded, 0 override\(s\) removed, 0 failed/);
+  assert.deepEqual(project.readJson('package.json').dependencies, { alpha: '^2.0.0', core: '^2.0.0' });
+  assert.match(lastCommit(), /^chore\(deps\): upgrade 2 packages/);
+});
+
+test('--auto retries a failed package together with packages from the same scope', () => {
+  project = createProject({
+    packageJson: {
+      name: 'app',
+      version: '1.0.0',
+      private: true,
+      scripts: { test: 'node check.js' },
+      dependencies: { '@acme/theme': '^1.0.0', '@acme/ui': '^1.0.0' },
+    },
+    registry: { '@acme/theme': versions('1.0.0', '2.0.0'), '@acme/ui': versions('1.0.0', '2.0.0') },
+    files: { 'check.js': failWhen("major('@acme/ui') !== major('@acme/theme')", 'theme and ui majors differ') },
+  });
+  const { status, output } = project.run(['--auto', '--yes', '--branch', BRANCH]);
+
+  assert.equal(status, 0, output);
+  assert.match(output, /theme and ui majors differ/, 'the first, single-package attempt fails');
+  assert.match(output, /attempt 2: together with @acme\/ui/);
+  assert.deepEqual(project.readJson('package.json').dependencies, { '@acme/theme': '^2.0.0', '@acme/ui': '^2.0.0' });
+});
+
+test('--auto falls back to a smaller upgrade and retries failures in a later pass', () => {
+  project = simpleProject({
+    // alpha 2 needs beta 1.1.0 (upgraded after it); gamma 2 never works, but 1.5.0 does.
+    condition: "(major('alpha') >= 2 && v('beta') !== '1.1.0') || major('gamma') >= 2",
+    packageJson: { dependencies: { alpha: '^1.0.0', gamma: '1.0.0' } }, // exact, so 1.5.0 isn't installed already
+    registry: { gamma: versions('1.0.0', '1.5.0', '2.0.0') },
+  });
+  const { status, output } = project.run(['--auto', '--yes', '--branch', BRANCH]);
+
+  assert.equal(status, 0, output);
+  assert.match(output, /attempt 2: smaller upgrade: 1\.5\.0 instead of 2\.0\.0/);
+  assert.match(output, /Pass 2: trying 1 failed or newly outdated upgrade\(s\) again/);
+  assert.match(output, /3 upgraded, 0 override\(s\) removed, 0 failed/);
+  assert.match(output, /gamma 1\.0\.0 → 1\.5\.0 {2}\(instead of 2\.0\.0\)/, 'the end report shows what was tried');
+  assert.deepEqual(project.readJson('package.json').dependencies, { alpha: '^2.0.0', gamma: '1.5.0' });
+  assert.match(lastCommit(), /\| `gamma` \| 1\.0\.0 \| 1\.5\.0 \|/);
+});
