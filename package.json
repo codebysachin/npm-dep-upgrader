@@ -5,14 +5,14 @@
   "type": "module",
   "private": true,
   "bin": {
-    "upgrade-deps": "./upgrade-deps.mjs"
+    "upgrade-deps": "./upgrade-deps.ts"
   },
   "engines": {
-    "node": ">=18.11"
+    "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs test/e2e/*.test.mjs",
-    "test:unit": "node --test test/*.test.mjs",
-    "test:e2e": "node --test test/e2e/*.test.mjs"
+    "test": "node --test test/*.test.ts test/e2e/*.test.ts",
+    "test:unit": "node --test test/*.test.ts",
+    "test:e2e": "node --test test/e2e/*.test.ts"
   }
 }

@@ -1,0 +1,20 @@
+{
+  // Only for type checking in the editor: Node runs the .ts files directly (type stripping),
+  // so nothing is compiled and nothing is installed. These settings keep the code to what
+  // Node can run: types that can simply be erased, `import type` for types, and .ts imports.
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2023",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "strict": false,
+    "noImplicitAny": true,
+    "skipLibCheck": true
+  },
+  "include": ["upgrade-deps.ts", "lib/**/*.ts", "test/**/*.ts"]
+}
