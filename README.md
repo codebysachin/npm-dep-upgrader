@@ -352,23 +352,68 @@ The change in progress is rolled back; then run `npm install` to re-sync `node_m
 ## Development
 
 ```bash
-npm test   # node:test unit tests for the pure modules
+npm test            # everything (about 20 seconds)
+npm run test:unit   # pure modules only, instant
+npm run test:e2e    # the real CLI against throwaway projects
+```
+
+### Tests
+
+- **Unit tests** (`test/*.test.mjs`) cover the pure modules: the plan, linking, the upgrade-rounds
+  loop, selection, semver, overrides, the report, test-output parsing and command display.
+- **End-to-end tests** (`test/e2e/`) run `upgrade-deps.mjs` against a throwaway git project with a
+  local bare remote, in a temp folder, with your git config isolated. `npm` there is
+  `test/e2e/support/fake-npm.mjs`, an offline stand-in that resolves versions from a JSON registry
+  defined in each test and enforces `peerDependencies`. Nothing touches the network or a real
+  registry.
+- Interactive runs are scripted with `NPM_DEP_UPGRADER_ANSWERS`, a JSON array of answers used one
+  per question, e.g. `'["alpha", "", "y"]'`. If the answers run out, the run fails instead of
+  waiting for input.
+
+To add a scenario, copy a test in `test/e2e/upgrade.test.mjs`. `createProject` takes the
+`package.json`, the fake registry and extra files (usually `check.js`, which fails the tests
+under a condition you choose).
+
+### Tooling
+
+- **CI:** `.github/workflows/test.yml` runs `npm test` on Node 18, 20, 22 and 24 for pushes to
+  `main` and for every PR.
+- **Types:** `jsconfig.json` makes VS Code type-check `lib/` against the JSDoc types. Node's own
+  types come from VS Code's automatic type acquisition, so nothing is added to the project.
+- **Formatting:** `.editorconfig`: 2 spaces, LF, UTF-8, final newline.
+
+### Modules
+
+A run goes through these phases, each in its own module:
+
+```
+cli.mjs ─ options ─ session ─ branch-setup ─ rounds (first pick) ─ baseline tests
+        ─ rounds (upgrade loop) ─ rounds (overrides) ─ finish
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| `lib/cli.mjs` | Option parsing and the order of steps in a run |
-| `lib/git.mjs` | Main-branch pre-flight, branch creation, change review, the final commit |
-| `lib/npm.mjs` | Wrappers around the npm CLI |
-| `lib/command-echo.mjs` | Shows each command and its result on screen (folded, or full with `--verbose`) |
-| `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
-| `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
+| `lib/cli.mjs` | Runs the phases in order and turns errors into exit codes |
+| `lib/options.mjs` | Option definitions, `--help` text and validation. The parsed options are frozen |
+| `lib/session.mjs` | What a run shares between phases: options, context, whether it can ask questions (`prompts`), the workspace and the results |
+| `lib/branch-setup.mjs` | Which branch the run works on, that it is up to date, branch-name clashes, the baseline install |
+| `lib/rounds.mjs` | Lists outdated packages, lets the user pick, runs the upgrade rounds (`runRounds` is unit-tested) and the overrides review |
+| `lib/finish.mjs` | Summary, MR text, showing the changes, the commit, and what to print when quitting |
 | `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
+| `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
+| `lib/git.mjs` | Git checks and operations: branch status, creation, deletion, change review, the commit |
+| `lib/npm.mjs` | Wrappers around the npm CLI |
+| `lib/exec.mjs` | Runs commands and records them in the logs |
+| `lib/command-echo.mjs` | Shows each command and its result on screen (folded, or full with `--verbose`) |
+| `lib/runtime.mjs` | The few process-wide settings (command log, echo, verbose), set once by the CLI |
+| `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
 | `lib/semver.mjs` | Minimal semver helpers, including npm range matching (pure) |
 | `lib/report.mjs` | Builds the Markdown MR summary (pure) |
 | `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
-| `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`) |
+| `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`), or scripted answers |
 | `lib/test-output.mjs` | Finds failing files, tests, errors and locations in test output (pure) |
 | `lib/failure-report.mjs` | Formats failures for the terminal and log files (pure) |
 | `lib/logfile.mjs` | Layout of `run.log` and the per-step log files |
 | `lib/merge-requests.mjs` | Finds open GitHub PRs / GitLab MRs from a branch (`gh`/`glab`, or the REST API with a token) |
+| `lib/errors.mjs` | Error types and exit codes |
+| `lib/logger.mjs` | Coloured terminal output and the flashing banner |

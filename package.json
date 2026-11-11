@@ -11,6 +11,8 @@
     "node": ">=18.11"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.mjs test/e2e/*.test.mjs",
+    "test:unit": "node --test test/*.test.mjs",
+    "test:e2e": "node --test test/e2e/*.test.mjs"
   }
 }

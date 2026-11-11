@@ -59,15 +59,14 @@ test('exclude skips packages with a reason', () => {
   assert.match(skipped.find((s) => s.name === 'express').reason, /excluded/);
 });
 
-test('nextRoundItems drops upgraded packages and keeps failed ones, marked and listed last', () => {
+test('nextRoundItems drops upgraded packages and lists failed ones last, as plain upgrades', () => {
   const planned = ['axios', 'chalk', 'lodash', 'ms'].map((name) => ({ name, to: '2.0.0' }));
   const items = nextRoundItems(planned, {
     upgraded: new Set(['ms']),
-    failures: new Map([['axios', { to: '2.0.0', reason: 'tests fail with 2.0.0 in `a.test.js`' }]]),
+    failures: new Map([['axios', { to: '2.0.0', reason: 'tests fail with 2.0.0 in a.test.js' }]]),
   });
   assert.deepEqual(items.map((i) => i.name), ['chalk', 'lodash', 'axios']);
-  assert.deepEqual(items[2].previousAttempt, { to: '2.0.0', reason: 'tests fail with 2.0.0 in `a.test.js`' });
-  assert.equal('previousAttempt' in items[0], false);
+  assert.deepEqual(items[2], planned[0], 'the failure is not copied onto the item');
 });
 
 const tsEslint = [
@@ -99,15 +98,12 @@ test('findPeerLinks finds which upgrade needs which, from both old and new peerD
 });
 
 test('groupUpgrades groups mutual requirements and keeps one-way ones between units', () => {
-  const items = [...tsEslint];
-  items[2] = { ...items[2], previousAttempt: { to: '8.20.0', reason: 'x' } };
-  const units = groupUpgrades(items, findPeerLinks(tsEslint, peersOf));
+  const units = groupUpgrades(tsEslint, findPeerLinks(tsEslint, peersOf));
   assert.deepEqual(units.map((u) => u.name), [PAIR, 'eslint', 'ms'], 'required units are listed first');
   const [pair, eslint, ms] = units;
   assert.equal(pair.links.length, 2);
   assert.deepEqual(pair.requires, []);
-  assert.deepEqual(pair.previousAttempt, { to: '8.20.0', reason: 'x' });
-  assert.equal('previousAttempt' in pair.members[1], false, 'members are plain upgrades');
+  assert.deepEqual(pair.members, [tsEslint[1], tsEslint[2]], 'members are the planned upgrades themselves');
   assert.deepEqual([...new Set(eslint.requires.map((r) => r.unit))], [PAIR]);
   assert.deepEqual([ms.links, ms.requires], [[], []]);
 });

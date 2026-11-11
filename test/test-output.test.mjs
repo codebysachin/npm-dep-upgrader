@@ -139,7 +139,7 @@ test('ANSI colours are stripped', () => {
 
 test('testFailureReason names the failing files, or falls back to the first error', () => {
   const analysis = analyzeTestOutput(fixture('node-test-spec.txt'), CWD);
-  assert.equal(testFailureReason(analysis, 'tests fail'), 'tests fail in `test/math.test.mjs`, `test/str.test.mjs`');
+  assert.equal(testFailureReason(analysis, 'tests fail'), 'tests fail in test/math.test.mjs, test/str.test.mjs');
   const noFiles = { files: [], tests: [], errors: ['TypeError: x is not a function'], locations: [], summary: null, excerpt: [] };
   assert.equal(testFailureReason(noFiles, 'tests fail'), 'tests fail: TypeError: x is not a function');
 });
