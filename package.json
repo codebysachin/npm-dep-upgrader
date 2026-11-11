@@ -14,5 +14,8 @@
     "test": "node --test test/*.test.ts test/e2e/*.test.ts",
     "test:unit": "node --test test/*.test.ts",
     "test:e2e": "node --test test/e2e/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2"
   }
 }
