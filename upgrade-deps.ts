@@ -4,14 +4,9 @@
  * suite, and removes package.json overrides that are no longer needed.
  *
  * Uses only Node.js built-in modules — no third-party dependencies.
+ * Needs Node.js 22.18 or later, which runs .ts files directly (see package.json "engines").
  * Run `node upgrade-deps.ts --help` for options.
  */
 import { main } from './lib/cli.ts';
-
-const [major, minor] = process.versions.node.split('.').map(Number);
-if (major < 18 || (major === 18 && minor < 11)) {
-  console.error(`Node.js >= 18.11 is required (found ${process.versions.node}).`);
-  process.exit(1);
-}
 
 process.exitCode = await main();

@@ -1,7 +1,6 @@
 /**
  * The few settings that apply to the whole process, in one place. The CLI sets them once at
- * start-up; until then (and after resetRuntime) nothing is echoed or logged by default, which
- * keeps unit tests quiet and independent of each other.
+ * start-up; until then nothing is echoed or logged, which keeps unit tests quiet.
  *
  * Terminal capabilities (colour, TTY) are read when needed rather than stored, so they always
  * match the current process.
@@ -28,10 +27,6 @@ export const runtime = (): Readonly<RuntimeSettings> => current;
 
 export function configureRuntime(changes: Partial<RuntimeSettings>): void {
   current = Object.freeze({ ...current, ...changes });
-}
-
-export function resetRuntime(): void {
-  current = DEFAULTS;
 }
 
 /** Standard output is a terminal (so lines can be rewritten and questions asked). */
