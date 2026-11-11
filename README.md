@@ -6,11 +6,14 @@ every upgrade, and keeps an upgrade only if the tests pass. It then removes
 works. At the end it shows what changed and asks whether to commit, using a Markdown
 summary of the successful upgrades as the commit message, ready for your merge request.
 
-It uses **only Node.js built-in modules**, with no third-party dependencies to audit or keep patched.
+It is written in TypeScript and uses **only Node.js built-in modules**, with no third-party
+dependencies to audit or keep patched. Node runs the `.ts` files directly, so there is nothing
+to install or build.
 
 ## Requirements
 
-- Node.js >= 18.11 and npm
+- Node.js >= 22.18 (Node 24 LTS recommended) and npm. These versions run TypeScript files
+  without a flag.
 - git. The script can start on `main` or on any other branch (see
   [Running on another branch](#running-on-another-branch)).
 - A `test` script in `package.json` (or pass `--test-cmd`)
@@ -19,13 +22,13 @@ It uses **only Node.js built-in modules**, with no third-party dependencies to a
 
 ```bash
 cd /path/to/your-project
-node /path/to/npm-dep-upgrader/upgrade-deps.mjs
+node /path/to/npm-dep-upgrader/upgrade-deps.ts
 ```
 
 Preview without changing anything:
 
 ```bash
-node upgrade-deps.mjs --dry-run
+node upgrade-deps.ts --dry-run
 ```
 
 ### Running on another branch
@@ -397,27 +400,40 @@ npm run test:e2e    # the real CLI against throwaway projects
 
 ### Tests
 
-- **Unit tests** (`test/*.test.mjs`) cover the pure modules: the plan, linking, the upgrade-rounds
+- **Unit tests** (`test/*.test.ts`) cover the pure modules: the plan, linking, the upgrade-rounds
   loop, `--auto`'s retries, selection, semver, overrides, the report, test-output parsing and command display.
-- **End-to-end tests** (`test/e2e/`) run `upgrade-deps.mjs` against a throwaway git project with a
+- **End-to-end tests** (`test/e2e/`) run `upgrade-deps.ts` against a throwaway git project with a
   local bare remote, in a temp folder, with your git config isolated. `npm` there is
-  `test/e2e/support/fake-npm.mjs`, an offline stand-in that resolves versions from a JSON registry
+  `test/e2e/support/fake-npm.ts`, an offline stand-in that resolves versions from a JSON registry
   defined in each test and enforces `peerDependencies`. Nothing touches the network or a real
   registry.
 - Interactive runs are scripted with `NPM_DEP_UPGRADER_ANSWERS`, a JSON array of answers used one
   per question, e.g. `'["alpha", "", "y"]'`. If the answers run out, the run fails instead of
   waiting for input.
 
-To add a scenario, copy a test in `test/e2e/upgrade.test.mjs`. `createProject` takes the
+To add a scenario, copy a test in `test/e2e/upgrade.test.ts`. `createProject` takes the
 `package.json`, the fake registry and extra files (usually `check.js`, which fails the tests
 under a condition you choose).
 
 ### Tooling
 
-- **CI:** `.github/workflows/test.yml` runs `npm test` on Node 18, 20, 22 and 24 for pushes to
-  `main` and for every PR.
-- **Types:** `jsconfig.json` makes VS Code type-check `lib/` against the JSDoc types. Node's own
-  types come from VS Code's automatic type acquisition, so nothing is added to the project.
+- **TypeScript without a build:** Node (22.18 and later) runs the `.ts` files directly by
+  removing the type annotations as it loads them ("type stripping"). It doesn't check the
+  types; VS Code does, using `tsconfig.json` and its own built-in TypeScript. Node's own types
+  come from VS Code's automatic type acquisition, so nothing is added to the project.
+- **TypeScript that Node can run:** `tsconfig.json` makes the editor flag anything Node can't
+  strip:
+  - only syntax that can simply be erased (`erasableSyntaxOnly`): no `enum`, `namespace` or
+    parameter properties;
+  - `import type` for imports that are only types (`verbatimModuleSyntax`), since Node removes
+    them;
+  - relative imports that name the `.ts` file, e.g. `./plan.ts`.
+- **Publishing later:** Node doesn't strip types from files inside `node_modules`, so a package
+  published to Nexus has to contain `.js`. A small release script using `stripTypeScriptTypes()`
+  from `node:module` can produce it, with no dependencies.
+- **CI:** `.github/workflows/test.yml` runs `npm test` on Node 22.18 (the oldest supported), the
+  latest 22 and 24, for pushes to `main` and for every PR. CI runs the tests but not a type
+  check, which would need the `typescript` package.
 - **Formatting:** `.editorconfig`: 2 spaces, LF, UTF-8, final newline.
 
 ### Modules
@@ -425,34 +441,34 @@ under a condition you choose).
 A run goes through these phases, each in its own module:
 
 ```
-cli.mjs ─ options ─ session ─ branch-setup ─ rounds (first pick) ─ baseline tests
+cli.ts ─ options ─ session ─ branch-setup ─ rounds (first pick) ─ baseline tests
         ─ rounds (upgrade loop) ─ rounds (overrides) ─ finish
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| `lib/cli.mjs` | Runs the phases in order and turns errors into exit codes |
-| `lib/options.mjs` | Option definitions, `--help` text and validation. The parsed options are frozen |
-| `lib/session.mjs` | What a run shares between phases: options, context, whether it can ask questions (`prompts`), the workspace and the results |
-| `lib/branch-setup.mjs` | Which branch the run works on, that it is up to date, branch-name clashes, the baseline install |
-| `lib/rounds.mjs` | Lists outdated packages, lets the user pick, runs the upgrade rounds (`runRounds` is unit-tested) and the overrides review |
-| `lib/auto.mjs` | `--auto`: retries with related packages and smaller upgrades, and the passes (`runAuto` is unit-tested) |
-| `lib/finish.mjs` | Summary, MR text, showing the changes, the commit, and what to print when quitting |
-| `lib/workflow.mjs` | Applies a change, tests it, then keeps it or rolls it back |
-| `lib/plan.mjs` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
-| `lib/git.mjs` | Git checks and operations: branch status, creation, deletion, change review, the commit |
-| `lib/npm.mjs` | Wrappers around the npm CLI |
-| `lib/exec.mjs` | Runs commands and records them in the logs |
-| `lib/command-echo.mjs` | Shows each command and its result on screen (folded, or full with `--verbose`) |
-| `lib/runtime.mjs` | The few process-wide settings (command log, echo, verbose), set once by the CLI |
-| `lib/overrides.mjs` | Reads and edits `overrides` (pure) |
-| `lib/semver.mjs` | Minimal semver helpers, including npm range matching (pure) |
-| `lib/report.mjs` | Builds the Markdown MR summary (pure) |
-| `lib/selection.mjs` | Parses what the user types when picking from a list (pure) |
-| `lib/prompt.mjs` | Interactive terminal prompts (`node:readline`), or scripted answers |
-| `lib/test-output.mjs` | Finds failing files, tests, errors and locations in test output (pure) |
-| `lib/failure-report.mjs` | Formats failures for the terminal and log files (pure) |
-| `lib/logfile.mjs` | Layout of `run.log` and the per-step log files |
-| `lib/merge-requests.mjs` | Finds open GitHub PRs / GitLab MRs from a branch (`gh`/`glab`, or the REST API with a token) |
-| `lib/errors.mjs` | Error types and exit codes |
-| `lib/logger.mjs` | Coloured terminal output and the flashing banner |
+| `lib/cli.ts` | Runs the phases in order and turns errors into exit codes |
+| `lib/options.ts` | Option definitions, `--help` text and validation. The parsed options are frozen |
+| `lib/session.ts` | What a run shares between phases: options, context, whether it can ask questions (`prompts`), the workspace and the results |
+| `lib/branch-setup.ts` | Which branch the run works on, that it is up to date, branch-name clashes, the baseline install |
+| `lib/rounds.ts` | Lists outdated packages, lets the user pick, runs the upgrade rounds (`runRounds` is unit-tested) and the overrides review |
+| `lib/auto.ts` | `--auto`: retries with related packages and smaller upgrades, and the passes (`runAuto` is unit-tested) |
+| `lib/finish.ts` | Summary, MR text, showing the changes, the commit, and what to print when quitting |
+| `lib/workflow.ts` | Applies a change, tests it, then keeps it or rolls it back |
+| `lib/plan.ts` | Turns `npm outdated` output into an upgrade plan and groups linked packages (pure) |
+| `lib/git.ts` | Git checks and operations: branch status, creation, deletion, change review, the commit |
+| `lib/npm.ts` | Wrappers around the npm CLI |
+| `lib/exec.ts` | Runs commands and records them in the logs |
+| `lib/command-echo.ts` | Shows each command and its result on screen (folded, or full with `--verbose`) |
+| `lib/runtime.ts` | The few process-wide settings (command log, echo, verbose), set once by the CLI |
+| `lib/overrides.ts` | Reads and edits `overrides` (pure) |
+| `lib/semver.ts` | Minimal semver helpers, including npm range matching (pure) |
+| `lib/report.ts` | Builds the Markdown MR summary (pure) |
+| `lib/selection.ts` | Parses what the user types when picking from a list (pure) |
+| `lib/prompt.ts` | Interactive terminal prompts (`node:readline`), or scripted answers |
+| `lib/test-output.ts` | Finds failing files, tests, errors and locations in test output (pure) |
+| `lib/failure-report.ts` | Formats failures for the terminal and log files (pure) |
+| `lib/logfile.ts` | Layout of `run.log` and the per-step log files |
+| `lib/merge-requests.ts` | Finds open GitHub PRs / GitLab MRs from a branch (`gh`/`glab`, or the REST API with a token) |
+| `lib/errors.ts` | Error types and exit codes |
+| `lib/logger.ts` | Coloured terminal output and the flashing banner |

@@ -14,8 +14,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # package.json "engines" says >=18.11; keep the oldest supported version in this list.
-        node: [18, 20, 22, 24]
+        # package.json "engines" says >=22.18 (the first 22.x that runs .ts files without a flag);
+        # keep the oldest supported version in this list.
+        node: ['22.18', 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
