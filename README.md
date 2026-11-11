@@ -8,7 +8,8 @@ summary of the successful upgrades as the commit message, ready for your merge r
 
 It is written in TypeScript and uses **only Node.js built-in modules**, with no third-party
 dependencies to audit or keep patched. Node runs the `.ts` files directly, so there is nothing
-to install or build.
+to install or build to run it. The one dev dependency, `@types/node`, only gives the editor
+Node's types (see [Tooling](#tooling)).
 
 ## Requirements
 
@@ -419,8 +420,12 @@ under a condition you choose).
 
 - **TypeScript without a build:** Node (22.18 and later) runs the `.ts` files directly by
   removing the type annotations as it loads them ("type stripping"). It doesn't check the
-  types; VS Code does, using `tsconfig.json` and its own built-in TypeScript. Node's own types
-  come from VS Code's automatic type acquisition, so nothing is added to the project.
+  types; VS Code does, using `tsconfig.json` and its own built-in TypeScript.
+- **Node's types in the editor:** run `npm install` once after cloning. It installs the only dev
+  dependency, `@types/node` (major 24, matching the Node the org runs): declaration files with no
+  code, which the tool never loads and which a published package wouldn't include. Without it the
+  tool still runs, but the editor shows errors such as "Cannot find name 'process'".
+  `tsconfig.json` lists it in `types`, which TypeScript 6 needs.
 - **TypeScript that Node can run:** `tsconfig.json` makes the editor flag anything Node can't
   strip:
   - only syntax that can simply be erased (`erasableSyntaxOnly`): no `enum`, `namespace` or

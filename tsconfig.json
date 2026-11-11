@@ -1,6 +1,7 @@
 {
   // Only for type checking in the editor: Node runs the .ts files directly (type stripping),
-  // so nothing is compiled and nothing is installed. These settings keep the code to what
+  // so nothing is compiled. The one dev dependency, @types/node, only gives the editor
+  // Node's types; the tool never loads it. These settings keep the code to what
   // Node can run: types that can simply be erased, `import type` for types, and .ts imports.
   "compilerOptions": {
     "module": "NodeNext",
@@ -14,7 +15,8 @@
     "isolatedModules": true,
     "strict": false,
     "noImplicitAny": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["upgrade-deps.ts", "lib/**/*.ts", "test/**/*.ts"]
 }
