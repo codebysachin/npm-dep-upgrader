@@ -2,6 +2,7 @@
  * The stateful steps of a run: each change is applied, verified with tests and
  * either kept in the working tree or rolled back before the next one starts.
  */
+import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   npmFailureReason,
@@ -9,7 +10,15 @@ import {
   summarizeNpmError,
   testFailureReason,
 } from './failure-report.ts';
-import { appendLogSection, appendRunIndex, writeRunIndexHeader, writeStepLogHeader } from './logfile.ts';
+import {
+  appendLogSection,
+  appendRunIndex,
+  formatErrorEntry,
+  writeErrorLogHeader,
+  writeRunIndexHeader,
+  writeStepLogHeader,
+} from './logfile.ts';
+import { RecordedError } from './errors.ts';
 import { color, log } from './logger.ts';
 import { readManifest, snapshotManifests, writeManifest } from './manifest.ts';
 import {
@@ -23,6 +32,8 @@ import { describeOverride, removeOverride } from './overrides.ts';
 import { compareVersions, minVersionFromSpec, parseVersion } from './semver.ts';
 import { analyzeTestOutput } from './test-output.ts';
 import type { Attempt } from './auto.ts';
+import type { RunResult } from './exec.ts';
+import type { ErrorEntry } from './logfile.ts';
 import type { ManifestSnapshot } from './manifest.ts';
 import type { OverrideLeaf } from './overrides.ts';
 import type { PlannedUpgrade } from './plan.ts';
@@ -41,6 +52,9 @@ export class RunContext {
   testTimeoutMs: number | undefined;
   logCounter: number;
   runIndex: string;
+  /** errors.log: only what failed. Created at the first error, so no file means no errors. */
+  errorLog: string;
+  errorCount: number;
   activeSnapshot: ManifestSnapshot | null;
 
   constructor({ cwd, testCommand, logDir, testTimeoutMs }: { cwd: string; testCommand: string; logDir: string; testTimeoutMs?: number }) {
@@ -51,6 +65,8 @@ export class RunContext {
     this.logCounter = 0;
     this.runIndex = join(logDir, 'run.log');
     writeRunIndexHeader(this.runIndex, { cwd, testCommand });
+    this.errorLog = join(logDir, 'errors.log');
+    this.errorCount = 0;
     /** Snapshot of the change currently in progress; restored on Ctrl+C. */
     this.activeSnapshot = null;
   }
@@ -73,6 +89,13 @@ export class RunContext {
     appendRunIndex(this.runIndex, { ok, step, logFile });
   }
 
+  /** Adds a failure to errors.log, creating the file the first time. */
+  recordError(entry: ErrorEntry): void {
+    if (!this.errorCount) writeErrorLogHeader(this.errorLog, { cwd: this.cwd, runIndex: this.runIndex });
+    this.errorCount += 1;
+    appendFileSync(this.errorLog, formatErrorEntry(this.errorCount, entry));
+  }
+
   beginChange(): ManifestSnapshot {
     this.activeSnapshot = snapshotManifests(this.cwd);
     return this.activeSnapshot;
@@ -85,7 +108,16 @@ export class RunContext {
     this.activeSnapshot = null;
     const reinstall = installAll(this.cwd, logFile);
     if (!reinstall.ok) {
-      throw new Error(`Rollback failed: "npm install" errored after restoring package files. See ${logFile}`);
+      const npmError = summarizeNpmError(reinstall);
+      this.recordError({
+        step: 'roll back the change',
+        reason: `${npmFailureReason(npmError)} after restoring package.json and the lockfile`,
+        outcome: 'run stopped; node_modules may not match package.json until "npm install" succeeds',
+        logFile,
+        details: npmError.lines,
+        command: reinstall,
+      });
+      throw new RecordedError(`Rollback failed: "npm install" errored after restoring package files. See ${logFile}`);
     }
   }
 
@@ -98,22 +130,22 @@ export class RunContext {
    * Runs the test command. On failure, explains which tests failed and why,
    * both in the terminal and at the end of the step's log file.
    */
-  verifyTests(logFile: string): { ok: boolean; analysis: TestFailureAnalysis | null } {
+  verifyTests(logFile: string): { ok: boolean; analysis: TestFailureAnalysis | null; result: RunResult; timedOut: boolean } {
     const result = runTests(this.cwd, this.testCommand, logFile, this.testTimeoutMs);
     const seconds = (result.durationMs / 1000).toFixed(1);
 
     if (result.ok) {
       log.success(`tests passed (${seconds}s)`);
-      return { ok: true, analysis: null };
+      return { ok: true, analysis: null, result, timedOut: false };
     }
 
-    const timedOut = result.signal === 'SIGTERM' && this.testTimeoutMs;
+    const timedOut = Boolean(result.signal === 'SIGTERM' && this.testTimeoutMs);
     const analysis = analyzeTestOutput(`${result.stdout}\n${result.stderr}`, this.cwd);
     log.error(timedOut ? `tests timed out after ${seconds}s` : `tests failed (${seconds}s)`);
     const recognised = analysis.files.length || analysis.tests.length || analysis.errors.length;
     printBlock(renderTestFailure(analysis, { style: CONSOLE_STYLE, includeExcerpt: !recognised }), logFile);
     appendLogSection(logFile, 'FAILURE ANALYSIS', renderTestFailure(analysis, { includeExcerpt: false }));
-    return { ok: false, analysis };
+    return { ok: false, analysis, result, timedOut };
   }
 }
 
@@ -147,9 +179,16 @@ export function upgradePackages(ctx: RunContext, items: PlannedUpgrade[]): Upgra
   const logFile = ctx.nextLogFile(`upgrade-${items.map((i) => i.name).join('+')}`, step);
   ctx.beginChange();
 
-  const fail = (what: string, reason: string, failure: UpgradeOutcome['failure']): UpgradeOutcome => {
+  const fail = (
+    what: string,
+    reason: string,
+    failure: UpgradeOutcome['failure'],
+    error: Pick<ErrorEntry, 'details' | 'command'>,
+  ): UpgradeOutcome => {
+    const back = items.map((i) => `${i.name} to ${i.from}`).join(', ');
+    ctx.recordError({ step, reason, outcome: `rolling back ${back}`, logFile, ...error });
     ctx.rollback(logFile);
-    log.warn(`rolled back ${items.map((i) => `${i.name} to ${i.from}`).join(', ')}`);
+    log.warn(`rolled back ${back}`);
     ctx.record(false, `${step} (${what})`, logFile);
     return { ok: false, items: items.map((i) => ({ ...i, reason })), failure };
   };
@@ -160,13 +199,14 @@ export function upgradePackages(ctx: RunContext, items: PlannedUpgrade[]): Upgra
     log.error(npmFailureReason(npmError));
     printBlock(npmError.lines.map(color.dim), logFile);
     appendLogSection(logFile, 'FAILURE ANALYSIS', npmError.lines);
-    return fail('install failed', npmFailureReason(npmError), { kind: 'install', ...npmError });
+    return fail('install failed', npmFailureReason(npmError), { kind: 'install', ...npmError }, { details: npmError.lines, command: install });
   }
 
   const tests = ctx.verifyTests(logFile);
   if (!tests.ok) {
     const prefix = together ? 'tests fail when upgraded together' : `tests fail with ${items[0].to}`;
-    return fail('tests failed', testFailureReason(tests.analysis, prefix), { kind: 'tests' });
+    const reason = testFailureReason(tests.analysis, tests.timedOut ? `${prefix} (timed out)` : prefix);
+    return fail('tests failed', reason, { kind: 'tests' }, { details: renderTestFailure(tests.analysis, { includeExcerpt: false }), command: tests.result });
   }
 
   ctx.acceptChange();

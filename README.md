@@ -319,11 +319,13 @@ the failing test files.
 ## Logs
 
 Each run writes its logs to `$TMPDIR/npm-dep-upgrader/<timestamp>/`, never to the project's
-working tree. The folder is printed at the start and the end of the run.
+working tree. The folder is printed at the start and the end of the run. If anything failed,
+the end of the run also says how many errors there were and where `errors.log` is.
 
 | File | Contents |
 | --- | --- |
-| `run.log` | Start here. One line per step: time, PASS/FAIL, what was done, and the step's log file |
+| `errors.log` | Only what failed, to investigate it. Written only when something fails, so no file means no errors. See [The error log](#the-error-log) |
+| `run.log` | One line per step: time, PASS/FAIL, what was done, and the step's log file |
 | `NNN-<step>.log` | One file per step: a header naming the step, then every command it ran (exit status, duration, stdout and stderr), a `FAILURE ANALYSIS` section if it failed, and a `ROLLBACK` section if the change was undone |
 | `commands.log` | Commands that don't belong to a step (mostly git checks), with their output |
 | `mr-summary.md` | The Markdown summary for the MR |
@@ -335,6 +337,46 @@ working tree. The folder is printed at the start and the end of the run.
 11:08:44  ✖  FAIL  upgrade chalk 4.1.2 → 6.0.1 (tests failed) 004-upgrade-chalk.log
 11:08:45  ✔  PASS  upgrade ms 2.0.0 → 2.1.3                  005-upgrade-ms.log
 ```
+
+### The error log
+
+`errors.log` collects every failure of the run in one place, so you don't have to search the
+step logs for it. Each entry has:
+
+- the step and the time, numbered in order (`#1`, `#2`, ...);
+- **Error:** what went wrong, in one line;
+- **Outcome:** what the script did about it, e.g. rolled the upgrade back or stopped the run;
+- **Full log:** the step's log file, next to `errors.log`, with every command and its full output;
+- **Details:** the failing tests, errors and locations, npm's error lines, or how to fix a
+  problem found before starting;
+- **Failed command:** the command, its exit code, and the last 40 lines of its stdout and stderr.
+
+```
+══════════════════════════════════════════════════════════════════════════════
+#1  11:08:44  upgrade chalk 4.1.2 → 6.0.1
+══════════════════════════════════════════════════════════════════════════════
+Error:     tests fail with 6.0.1 in test/format.test.js
+Outcome:   rolling back chalk to 4.1.2
+Full log:  004-upgrade-chalk.log
+
+Details
+  Failing tests
+    test/format.test.js
+      • colours the warning
+  Errors
+    TypeError: chalk.yellow is not a function
+
+Failed command
+  $ npm test
+  exit 1 · 0.4s
+  [stderr]
+  ...
+```
+
+It records failed upgrades (every attempt, with `--auto`), failing baseline install or tests,
+problems found before starting, a failed rollback or commit, and unexpected errors with their
+stack trace. It doesn't record overrides that are kept because they are still needed: that is the
+expected answer, and the summary lists them with the reason.
 
 ### Commands on screen
 
@@ -402,7 +444,8 @@ npm run test:e2e    # the real CLI against throwaway projects
 ### Tests
 
 - **Unit tests** (`test/*.test.ts`) cover the pure modules: the plan, linking, the upgrade-rounds
-  loop, `--auto`'s retries, selection, semver, overrides, the report, test-output parsing and command display.
+  loop, `--auto`'s retries, selection, semver, overrides, the report, test-output parsing, command display
+  and the `errors.log` format.
 - **End-to-end tests** (`test/e2e/`) run `upgrade-deps.ts` against a throwaway git project with a
   local bare remote, in a temp folder, with your git config isolated. `npm` there is
   `test/e2e/support/fake-npm.ts`, an offline stand-in that resolves versions from a JSON registry
@@ -473,7 +516,7 @@ cli.ts ─ options ─ session ─ branch-setup ─ rounds (first pick) ─ base
 | `lib/prompt.ts` | Interactive terminal prompts (`node:readline`), or scripted answers |
 | `lib/test-output.ts` | Finds failing files, tests, errors and locations in test output (pure) |
 | `lib/failure-report.ts` | Formats failures for the terminal and log files (pure) |
-| `lib/logfile.ts` | Layout of `run.log` and the per-step log files |
+| `lib/logfile.ts` | Layout of `run.log`, `errors.log` and the per-step log files |
 | `lib/merge-requests.ts` | Finds open GitHub PRs / GitLab MRs from a branch (`gh`/`glab`, or the REST API with a token) |
 | `lib/errors.ts` | Error types and exit codes |
 | `lib/logger.ts` | Coloured terminal output and the flashing banner |

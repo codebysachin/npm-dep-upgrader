@@ -44,6 +44,14 @@ export class CommandError extends Error {
   }
 }
 
+/** A failure that stops the run and is already in errors.log, so the CLI doesn't record it again. */
+export class RecordedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RecordedError';
+  }
+}
+
 /** The user interrupted the run (Ctrl+C). */
 export class AbortError extends Error {
   constructor() {

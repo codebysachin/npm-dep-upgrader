@@ -31,6 +31,8 @@ export interface RunOptions {
 }
 
 export interface RunResult {
+  /** The command line as shown on screen and in the logs (set by run()). */
+  command?: string;
   ok: boolean;
   status: number | null;
   signal: string | null;
@@ -66,6 +68,7 @@ export function run(
   if (child.error) throw child.error;
 
   const result: RunResult = {
+    command: display,
     ok: child.status === 0,
     status: child.status,
     signal: child.signal,

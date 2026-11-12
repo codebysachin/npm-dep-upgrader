@@ -4,7 +4,7 @@
  * pulling (when allowed), switching to main (when chosen), and deleting a clashing branch
  * (only with an explicit yes or --replace-branch).
  */
-import { PreflightError } from './errors.ts';
+import { PreflightError, RecordedError } from './errors.ts';
 import { run } from './exec.ts';
 import { lockfileSyncProblems, npmFailureReason, summarizeNpmError } from './failure-report.ts';
 import {
@@ -207,7 +207,15 @@ function installBaseline(ctx: RunContext, branch: string, mainBranch: string): v
     const mismatches = lockfileSyncProblems(install);
     if (mismatches) throw lockfileOutOfSyncError(mismatches, branch, mainBranch);
     const npmError = summarizeNpmError(install);
-    throw new Error(`${npmFailureReason(npmError)} before any change:\n${npmError.lines.join('\n')}\nSee ${installLog}`);
+    ctx.recordError({
+      step: `baseline install (${branch})`,
+      reason: `${npmFailureReason(npmError)} before any change`,
+      outcome: 'run stopped: the branch must install cleanly before upgrades can be checked',
+      logFile: installLog,
+      details: npmError.lines,
+      command: install,
+    });
+    throw new RecordedError(`${npmFailureReason(npmError)} before any change:\n${npmError.lines.join('\n')}\nSee ${installLog}`);
   }
   log.success('dependencies installed');
 }
