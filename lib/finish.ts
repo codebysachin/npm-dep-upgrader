@@ -66,9 +66,20 @@ export async function finish(session: Session): Promise<void> {
       return;
     }
     log.warn(`commit failed: ${commit.error}`);
+    ctx.recordError({
+      step: `commit to ${workspace.workBranch}`,
+      reason: `git commit failed: ${commit.error}`,
+      outcome: 'the changes are still in the working tree, uncommitted',
+    });
   }
 
   printUncommittedHelp(session, files, messageFile);
+}
+
+/** Points at errors.log when anything failed during the run. */
+export function printErrorLogPointer(ctx: Session['ctx'] | undefined): void {
+  if (!ctx?.errorCount) return;
+  log.warn(`${ctx.errorCount} error(s) recorded for investigation: ${ctx.errorLog}`);
 }
 
 /** Writes mr-summary.md and commit-message.txt (and --report) for the changes kept so far. */

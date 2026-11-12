@@ -8,10 +8,10 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { prepareWorkspace } from './branch-setup.ts';
-import { AbortError, EXIT_CODES, PreflightError, QuitError, type PreflightIssue } from './errors.ts';
+import { AbortError, CommandError, EXIT_CODES, PreflightError, QuitError, RecordedError, type PreflightIssue } from './errors.ts';
 import { run } from './exec.ts';
-import { testFailureReason } from './failure-report.ts';
-import { finish, reportQuit } from './finish.ts';
+import { renderTestFailure, testFailureReason } from './failure-report.ts';
+import { finish, printErrorLogPointer, reportQuit } from './finish.ts';
 import { createBranch } from './git.ts';
 import { color, flashBanner, log } from './logger.ts';
 import { readManifest } from './manifest.ts';
@@ -59,12 +59,21 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     const baseline = ctx.verifyTests(baselineLog);
     ctx.record(baseline.ok, 'baseline tests', baselineLog);
     if (!baseline.ok) {
+      ctx.recordError({
+        step: `baseline tests (${baseBranch})`,
+        reason: testFailureReason(baseline.analysis, baseline.timedOut ? 'tests time out before any change' : 'tests fail before any change'),
+        outcome: `run stopped: fix the failing tests on ${baseBranch} first`,
+        logFile: baselineLog,
+        details: renderTestFailure(baseline.analysis, { includeExcerpt: false }),
+        command: baseline.result,
+      });
       await flashBanner(`Tests already fail on ${baseBranch}`, [
         'Upgrades cannot be verified while the baseline is red.',
         testFailureReason(baseline.analysis, 'Failing'),
         `Fix the failing tests on ${baseBranch} first, then run this script again.`,
         `Details: ${baselineLog}`,
       ]);
+      printErrorLogPointer(ctx);
       return EXIT_CODES.BASELINE_TESTS_FAILED;
     }
 
@@ -77,6 +86,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     else await upgradeRounds(session, { ...firstRound, choosing });
     if (!options.skipOverrides) await reviewOverrides(session);
     await finish(session);
+    printErrorLogPointer(ctx);
     return EXIT_CODES.OK;
   } catch (error) {
     return handleError(error, session);
@@ -105,10 +115,17 @@ async function handleError(error: any, session: Session | undefined): Promise<nu
   if (error instanceof QuitError) {
     if (session) reportQuit(session);
     else log.warn('Quit.');
+    printErrorLogPointer(ctx);
     return EXIT_CODES.OK;
   }
 
   if (error instanceof PreflightError) {
+    ctx?.recordError({
+      step: 'checks before starting',
+      reason: error.message,
+      outcome: 'run stopped before changing anything',
+      details: error.issues.flatMap((issue, i) => [`${i + 1}. ${issue.problem}`, ...issue.fix.map((step) => `   fix: ${step}`)]),
+    });
     const lines = error.issues.flatMap((issue, i) => [
       '',
       color.bold(`${i + 1}. ${issue.problem}`),
@@ -116,6 +133,7 @@ async function handleError(error: any, session: Session | undefined): Promise<nu
       ...issue.fix.map((step) => `     ${color.cyan('•')} ${step}`),
     ]);
     await flashBanner(`ACTION REQUIRED: ${error.message}`, [...lines, '', 'Then run this script again.']);
+    printErrorLogPointer(ctx);
     return EXIT_CODES.PREFLIGHT_FAILED;
   }
 
@@ -134,7 +152,18 @@ async function handleError(error: any, session: Session | undefined): Promise<nu
     return EXIT_CODES.PREFLIGHT_FAILED;
   }
 
-  log.error(error?.stack ?? String(error));
-  if (ctx) log.info(`Logs: ${ctx.logDir} (start with run.log)`);
+  if (error instanceof RecordedError) {
+    log.error(error.message);
+  } else {
+    log.error(error?.stack ?? String(error));
+    ctx?.recordError({
+      step: 'run stopped by an unexpected error',
+      reason: error?.message ?? String(error),
+      details: String(error?.stack ?? '').split('\n').slice(1).map((line) => line.trim()),
+      command: error instanceof CommandError ? error.result : undefined,
+    });
+  }
+  printErrorLogPointer(ctx);
+  if (ctx) log.info(`Logs: ${ctx.logDir} (start with ${ctx.errorCount ? 'errors.log' : 'run.log'})`);
   return EXIT_CODES.UNEXPECTED;
 }

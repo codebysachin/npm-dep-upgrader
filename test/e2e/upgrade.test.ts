@@ -51,6 +51,8 @@ test('--yes upgrades every package on a new branch and commits with the MR summa
   assert.match(lastCommit(), /^chore\(deps\): upgrade 2 packages/);
   assert.match(lastCommit(), /\| `alpha` \| 1\.0\.0 \| 2\.0\.0 \|/);
   assert.match(output, /✔ \$ npm install alpha@\^2\.0\.0 --save-prod/, 'commands are shown on screen');
+  assert.equal(project.readLog('errors.log'), null, 'no errors.log when nothing failed');
+  assert.doesNotMatch(output, /error\(s\) recorded/);
 });
 
 test('an upgrade that breaks the tests is rolled back and left out of the commit', () => {
@@ -64,6 +66,16 @@ test('an upgrade that breaks the tests is rolled back and left out of the commit
   assert.equal(project.installedVersion('alpha'), '1.0.0', 'node_modules is re-synced');
   assert.match(lastCommit(), /^chore\(deps\): upgrade 1 package\n/);
   assert.doesNotMatch(lastCommit(), /alpha/, 'the MR summary lists successful upgrades only');
+
+  const errors = project.readLog('errors.log');
+  assert.match(output, /1 error\(s\) recorded for investigation: .*errors\.log/);
+  assert.match(errors, /#1 .* upgrade alpha 1\.0\.0 → 2\.0\.0\n/);
+  assert.match(errors, /Error: {5}tests fail with 2\.0\.0/);
+  assert.match(errors, /Outcome: {3}rolling back alpha to 1\.0\.0/);
+  assert.match(errors, /Full log: {2}\d{3}-upgrade-alpha\.log/);
+  assert.match(errors, /\$ npm test\n {2}exit 1/, 'the failed command');
+  assert.match(errors, /\[stderr\]\n {2}Error: simulated test failure/, 'and its output');
+  assert.doesNotMatch(errors, /beta/, 'only failures are recorded');
 });
 
 test('a failed upgrade is offered again, marked as tried, and can pass after another upgrade', () => {
@@ -183,6 +195,20 @@ test('main behind its remote: --yes pulls it, otherwise the run stops and says h
   assert.match(project.git('log', '--format=%s'), /upstream change/);
 });
 
+test('tests that already fail on main stop the run, and errors.log says why', () => {
+  project = simpleProject({ condition: 'true' });
+  const { status, output } = project.run(['--yes', '--branch', BRANCH]);
+
+  assert.equal(status, 2, output);
+  assert.match(output, /Tests already fail on main/);
+  assert.match(output, /1 error\(s\) recorded for investigation/);
+  const errors = project.readLog('errors.log');
+  assert.match(errors, /#1 .* baseline tests \(main\)\n═+\nError: {5}tests fail before any change/);
+  assert.match(errors, /Outcome: {3}run stopped: fix the failing tests on main first/);
+  assert.match(errors, /\[stderr\]\n {2}Error: simulated test failure/);
+  assert.equal(changedFiles(), '', 'nothing changed');
+});
+
 test('a lockfile out of sync with package.json stops the run before anything changes', () => {
   project = simpleProject();
   const manifest = project.readJson('package.json');
@@ -195,6 +221,7 @@ test('a lockfile out of sync with package.json stops the run before anything cha
   assert.equal(status, 1, output);
   assert.match(output, /package-lock\.json is out of sync with package\.json/);
   assert.match(output, /Invalid: lock file's alpha@1\.0\.0 does not satisfy alpha@\^1\.1\.0/);
+  assert.match(project.readLog('errors.log'), /checks before starting[\s\S]*out of sync[\s\S]*fix: /);
 });
 
 test('obsolete overrides are removed and needed ones are kept', () => {

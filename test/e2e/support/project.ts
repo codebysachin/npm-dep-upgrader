@@ -4,7 +4,7 @@
  * upgrader against it. Everything is offline and lives in a temp folder.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,13 @@ export function createProject({ packageJson, registry, files = {} }: ProjectPara
     installedVersion: (name: string) =>
       existsSync(join(dir, 'node_modules', name)) ? JSON.parse(readFileSync(join(dir, 'node_modules', name, 'package.json'), 'utf8')).version : null,
     write: (file: string, content: string) => writeFileSync(join(dir, file), content),
+    /** A file from the latest run's log folder, or null when the run didn't write it. */
+    readLog(name: string): string | null {
+      const logs = join(root, 'npm-dep-upgrader');
+      const latest = readdirSync(logs).sort().at(-1);
+      const file = join(logs, latest, name);
+      return existsSync(file) ? readFileSync(file, 'utf8') : null;
+    },
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
